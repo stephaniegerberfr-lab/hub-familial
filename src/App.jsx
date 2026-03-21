@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import ProfilsMembres from "./components/ProfilsMembres";
 import Dashboard from "./components/Dashboard";
 import ListeCourses from "./components/ListeCourses";
+import Calendrier from "./components/Calendrier";
 
 function App() {
   const [membreActif, setMembreActif] = useState("famille");
@@ -20,8 +21,8 @@ function App() {
       <nav className="bg-white border-b border-gray-200 px-6 flex gap-1">
         {[
           { id: "accueil", label: "🏠 Accueil" },
-          { id: "courses", label: "🛒 Courses" },
           { id: "calendrier", label: "📅 Calendrier" },
+          { id: "courses", label: "🛒 Courses" },
           { id: "famille", label: "👨‍👩‍👧‍👦 Famille" },
         ].map((onglet) => (
           <button
@@ -40,12 +41,8 @@ function App() {
 
       {/* Contenu selon l'onglet actif */}
       {ongletActif === "accueil" && <Dashboard membreActif={membreActif} />}
+      {ongletActif === "calendrier" && <Calendrier membreActif={membreActif} />}
       {ongletActif === "courses" && <ListeCourses />}
-      {ongletActif === "calendrier" && (
-        <div className="p-6 text-gray-400 font-semibold">
-          📅 Calendrier — bientôt disponible
-        </div>
-      )}
       {ongletActif === "famille" && (
         <div className="p-6 text-gray-400 font-semibold">
           👨‍👩‍👧‍👦 Famille — bientôt disponible

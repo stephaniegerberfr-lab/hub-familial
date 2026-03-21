@@ -5,7 +5,6 @@ import Dashboard from "./components/Dashboard";
 import ListeCourses from "./components/ListeCourses";
 import Calendrier from "./components/Calendrier";
 import Taches from "./components/Taches";
-import Famille from "./components/Famille";
 
 function App() {
   const [membreActif, setMembreActif] = useState("famille");
@@ -26,7 +25,6 @@ function App() {
           { id: "calendrier", label: "📅 Calendrier" },
           { id: "courses", label: "🛒 Courses" },
           { id: "taches", label: "✅ Tâches" },
-          { id: "famille", label: "👨‍👩‍👧‍👦 Famille" },
         ].map((onglet) => (
           <button
             key={onglet.id}
@@ -47,7 +45,6 @@ function App() {
       {ongletActif === "calendrier" && <Calendrier membreActif={membreActif} />}
       {ongletActif === "courses" && <ListeCourses />}
       {ongletActif === "taches" && <Taches membreActif={membreActif} />}
-      {ongletActif === "famille" && <Famille />}
     </div>
   );
 }

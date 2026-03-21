@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Générateur icônes Hub Familial</title>
+  </head>
+  <body>
+    <canvas id="c192" width="192" height="192"></canvas>
+    <canvas id="c512" width="512" height="512"></canvas>
+    <br />
+    <button onclick="generer()">Générer et télécharger les icônes</button>
+
+    <script>
+      function dessinerIcone(canvas) {
+        const ctx = canvas.getContext("2d");
+        const s = canvas.width;
+
+        // Fond bleu nuit
+        ctx.fillStyle = "#1e1b4b";
+        ctx.beginPath();
+        ctx.roundRect(0, 0, s, s, s * 0.2);
+        ctx.fill();
+
+        // Emoji maison
+        ctx.font = `${s * 0.55}px serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("🏠", s / 2, s / 2);
+      }
+
+      function generer() {
+        ["c192", "c512"].forEach((id) => {
+          const canvas = document.getElementById(id);
+          dessinerIcone(canvas);
+          const lien = document.createElement("a");
+          lien.download = `icon-${canvas.width}.png`;
+          lien.href = canvas.toDataURL("image/png");
+          lien.click();
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -5,6 +5,7 @@ import {
   onSnapshot,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   serverTimestamp,
 } from "firebase/firestore";
@@ -23,7 +24,6 @@ function ListeCourses() {
   const [categorieChoisie, setCategorieChoisie] = useState("epicerie");
   const [chargement, setChargement] = useState(true);
 
-  // Écoute les changements Firebase en temps réel
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "courses"), (snapshot) => {
       const data = snapshot.docs.map((doc) => ({
@@ -56,7 +56,10 @@ function ListeCourses() {
     });
   };
 
-  // Regroupe les articles par catégorie
+  const supprimerArticle = async (articleId) => {
+    await deleteDoc(doc(db, "courses", articleId));
+  };
+
   const articlesParCategorie = categories
     .map((cat) => ({
       ...cat,
@@ -136,29 +139,44 @@ function ListeCourses() {
             {cat.articles.map((article) => (
               <div
                 key={article.id}
-                onClick={() => cocherArticle(article.id, article.fait)}
-                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
-                  article.fait
-                    ? "bg-gray-50 opacity-50"
-                    : "bg-gray-50 hover:bg-gray-100"
-                }`}
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50"
               >
+                {/* Checkbox + nom */}
                 <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                    article.fait
-                      ? "bg-emerald-500 border-emerald-500"
-                      : "border-gray-300"
+                  onClick={() => cocherArticle(article.id, article.fait)}
+                  className={`flex items-center gap-3 flex-1 cursor-pointer ${
+                    article.fait ? "opacity-50" : ""
                   }`}
                 >
-                  {article.fait && (
-                    <span className="text-white text-xs">✓</span>
-                  )}
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                      article.fait
+                        ? "bg-emerald-500 border-emerald-500"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {article.fait && (
+                      <span className="text-white text-xs">✓</span>
+                    )}
+                  </div>
+                  <span
+                    className={`text-sm font-semibold ${
+                      article.fait
+                        ? "line-through text-gray-400"
+                        : "text-gray-800"
+                    }`}
+                  >
+                    {article.nom}
+                  </span>
                 </div>
-                <span
-                  className={`text-sm font-semibold ${article.fait ? "line-through text-gray-400" : "text-gray-800"}`}
+
+                {/* Bouton supprimer */}
+                <button
+                  onClick={() => supprimerArticle(article.id)}
+                  className="text-gray-300 hover:text-red-400 transition-all text-lg px-1"
                 >
-                  {article.nom}
-                </span>
+                  🗑️
+                </button>
               </div>
             ))}
           </div>

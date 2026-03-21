@@ -5,6 +5,7 @@ import {
   onSnapshot,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   serverTimestamp,
 } from "firebase/firestore";
@@ -23,7 +24,6 @@ function Taches({ membreActif }) {
   const [afficherFormulaire, setAfficherFormulaire] = useState(false);
   const [chargement, setChargement] = useState(true);
 
-  // Formulaire
   const [titre, setTitre] = useState("");
   const [membre, setMembre] = useState("famille");
   const [points, setPoints] = useState(10);
@@ -72,12 +72,15 @@ function Taches({ membreActif }) {
     });
   };
 
+  const supprimerTache = async (tacheId) => {
+    await deleteDoc(doc(db, "taches", tacheId));
+  };
+
   const tachesAFaire = tachesFiltrees.filter((t) => !t.faite);
   const tachesFaites = tachesFiltrees.filter((t) => t.faite);
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {/* En-tête */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">✅ Tâches</h2>
         <button
@@ -88,7 +91,6 @@ function Taches({ membreActif }) {
         </button>
       </div>
 
-      {/* Formulaire */}
       {afficherFormulaire && (
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <h3 className="text-sm font-bold text-gray-600 mb-3">
@@ -178,6 +180,12 @@ function Taches({ membreActif }) {
                 >
                   ✓ Fait
                 </button>
+                <button
+                  onClick={() => supprimerTache(tache.id)}
+                  className="text-gray-300 hover:text-red-400 transition-all text-lg px-1"
+                >
+                  🗑️
+                </button>
               </div>
             ))}
           </div>
@@ -194,8 +202,7 @@ function Taches({ membreActif }) {
             {tachesFaites.map((tache) => (
               <div
                 key={tache.id}
-                onClick={() => cocherTache(tache.id, tache.faite)}
-                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 cursor-pointer"
+                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50"
               >
                 <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
                   <span className="text-white font-bold">✓</span>
@@ -208,6 +215,18 @@ function Taches({ membreActif }) {
                     {nomMembre(tache.membre)} · ⭐ {tache.points} pts
                   </p>
                 </div>
+                <button
+                  onClick={() => cocherTache(tache.id, tache.faite)}
+                  className="text-xs font-bold text-gray-400 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-100"
+                >
+                  ↩️ Annuler
+                </button>
+                <button
+                  onClick={() => supprimerTache(tache.id)}
+                  className="text-gray-300 hover:text-red-400 transition-all text-lg px-1"
+                >
+                  🗑️
+                </button>
               </div>
             ))}
           </div>

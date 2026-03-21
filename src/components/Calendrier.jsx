@@ -4,6 +4,8 @@ import {
   collection,
   onSnapshot,
   addDoc,
+  deleteDoc,
+  doc,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -16,11 +18,10 @@ const membres = [
   { id: "clement", nom: "Clément", couleur: "#e8a366" },
 ];
 
-// Génère et télécharge un fichier .ics
 function exporterIcal(evenement) {
-  const dateDebut = evenement.date.replace(/-/g, ""); // 20260322
-  const heureDebut = evenement.heure.replace(":", ""); // 1530
-  const heureFin = String(Number(heureDebut) + 100).padStart(4, "0"); // 1630
+  const dateDebut = evenement.date.replace(/-/g, "");
+  const heureDebut = evenement.heure.replace(":", "");
+  const heureFin = String(Number(heureDebut) + 100).padStart(4, "0");
 
   const contenu = [
     "BEGIN:VCALENDAR",
@@ -35,7 +36,6 @@ function exporterIcal(evenement) {
     "END:VCALENDAR",
   ].join("\r\n");
 
-  // Crée et télécharge le fichier
   const blob = new Blob([contenu], { type: "text/calendar" });
   const url = URL.createObjectURL(blob);
   const lien = document.createElement("a");
@@ -92,6 +92,10 @@ function Calendrier({ membreActif }) {
     setAfficherFormulaire(false);
   };
 
+  const supprimerEvenement = async (evenementId) => {
+    await deleteDoc(doc(db, "evenements", evenementId));
+  };
+
   const couleurMembre = (membreId) =>
     membres.find((m) => m.id === membreId)?.couleur || "#f2e8df";
 
@@ -113,7 +117,6 @@ function Calendrier({ membreActif }) {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {/* En-tête */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">📅 Calendrier</h2>
         <button
@@ -124,7 +127,6 @@ function Calendrier({ membreActif }) {
         </button>
       </div>
 
-      {/* Formulaire */}
       {afficherFormulaire && (
         <div className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <h3 className="text-sm font-bold text-gray-600 mb-3">
@@ -185,7 +187,6 @@ function Calendrier({ membreActif }) {
         <div className="text-center text-gray-400 py-8">Chargement...</div>
       )}
 
-      {/* Événements par date */}
       {Object.keys(evenementsParDate)
         .sort()
         .map((dateStr) => (
@@ -211,13 +212,17 @@ function Calendrier({ membreActif }) {
                       {ev.heure} · {nomMembre(ev.membre)}
                     </p>
                   </div>
-                  {/* Bouton export iCal */}
                   <button
                     onClick={() => exporterIcal(ev)}
                     className="text-xs font-bold text-indigo-500 hover:text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-3 py-1 rounded-lg transition-all"
-                    title="Partager avec Google Agenda / iPhone"
                   >
                     📤 .ics
+                  </button>
+                  <button
+                    onClick={() => supprimerEvenement(ev.id)}
+                    className="text-gray-300 hover:text-red-400 transition-all text-lg px-1"
+                  >
+                    🗑️
                   </button>
                 </div>
               ))}
@@ -225,7 +230,6 @@ function Calendrier({ membreActif }) {
           </div>
         ))}
 
-      {/* Vide */}
       {!chargement && evenementsFiltres.length === 0 && (
         <div className="text-center text-gray-400 py-8">
           <p className="text-4xl mb-2">📅</p>

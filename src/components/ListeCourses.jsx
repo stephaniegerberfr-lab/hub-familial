@@ -1,78 +1,68 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { db } from "../services/firebase";
+import {
+  collection,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  doc,
+  serverTimestamp,
+} from "firebase/firestore";
 
-const categoriesInitiales = [
-  {
-    id: "fruits-legumes",
-    nom: "🍎 Fruits & Légumes",
-    articles: [
-      { id: 1, nom: "Pommes", fait: false },
-      { id: 2, nom: "Carottes", fait: false },
-    ],
-  },
-  {
-    id: "frais",
-    nom: "🥛 Produits frais",
-    articles: [
-      { id: 3, nom: "Lait", fait: false },
-      { id: 4, nom: "Yaourts", fait: false },
-    ],
-  },
-  {
-    id: "epicerie",
-    nom: "🥫 Épicerie",
-    articles: [{ id: 5, nom: "Pâtes", fait: false }],
-  },
+const categories = [
+  { id: "fruits-legumes", nom: "🍎 Fruits & Légumes" },
+  { id: "frais", nom: "🥛 Produits frais" },
+  { id: "epicerie", nom: "🥫 Épicerie" },
+  { id: "boucherie", nom: "🥩 Boucherie" },
+  { id: "hygiene", nom: "🧴 Hygiène" },
 ];
 
 function ListeCourses() {
-  const [categories, setCategories] = useState(categoriesInitiales);
+  const [articles, setArticles] = useState([]);
   const [nouvelArticle, setNouvelArticle] = useState("");
   const [categorieChoisie, setCategorieChoisie] = useState("epicerie");
+  const [chargement, setChargement] = useState(true);
 
-  const totalArticles = categories.reduce(
-    (acc, cat) => acc + cat.articles.length,
-    0,
-  );
-  const articlesFaits = categories.reduce(
-    (acc, cat) => acc + cat.articles.filter((a) => a.fait).length,
-    0,
-  );
+  // Écoute les changements Firebase en temps réel
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "courses"), (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setArticles(data);
+      setChargement(false);
+    });
+    return () => unsub();
+  }, []);
 
-  const cocherArticle = (categorieId, articleId) => {
-    setCategories(
-      categories.map((cat) => {
-        if (cat.id !== categorieId) return cat;
-        return {
-          ...cat,
-          articles: cat.articles.map((art) => {
-            if (art.id !== articleId) return art;
-            return { ...art, fait: !art.fait };
-          }),
-        };
-      }),
-    );
-  };
+  const totalArticles = articles.length;
+  const articlesFaits = articles.filter((a) => a.fait).length;
 
-  const ajouterArticle = () => {
+  const ajouterArticle = async () => {
     if (!nouvelArticle.trim()) return;
-    setCategories(
-      categories.map((cat) => {
-        if (cat.id !== categorieChoisie) return cat;
-        return {
-          ...cat,
-          articles: [
-            ...cat.articles,
-            {
-              id: Date.now(),
-              nom: nouvelArticle.trim(),
-              fait: false,
-            },
-          ],
-        };
-      }),
-    );
+    await addDoc(collection(db, "courses"), {
+      nom: nouvelArticle.trim(),
+      categorie: categorieChoisie,
+      fait: false,
+      createdAt: serverTimestamp(),
+    });
     setNouvelArticle("");
   };
+
+  const cocherArticle = async (articleId, faitActuel) => {
+    await updateDoc(doc(db, "courses", articleId), {
+      fait: !faitActuel,
+    });
+  };
+
+  // Regroupe les articles par catégorie
+  const articlesParCategorie = categories
+    .map((cat) => ({
+      ...cat,
+      articles: articles.filter((a) => a.categorie === cat.id),
+    }))
+    .filter((cat) => cat.articles.length > 0);
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -86,8 +76,6 @@ function ListeCourses() {
             {articlesFaits}/{totalArticles} articles
           </span>
         </div>
-
-        {/* Barre de progression */}
         <div className="w-full bg-gray-100 rounded-full h-2">
           <div
             className="bg-emerald-500 h-2 rounded-full transition-all"
@@ -135,15 +123,20 @@ function ListeCourses() {
         </div>
       </div>
 
+      {/* Chargement */}
+      {chargement && (
+        <div className="text-center text-gray-400 py-8">Chargement...</div>
+      )}
+
       {/* Articles par catégorie */}
-      {categories.map((cat) => (
+      {articlesParCategorie.map((cat) => (
         <div key={cat.id} className="bg-white rounded-2xl shadow-sm p-5 mb-4">
           <h3 className="text-sm font-bold text-gray-500 mb-3">{cat.nom}</h3>
           <div className="flex flex-col gap-2">
             {cat.articles.map((article) => (
               <div
                 key={article.id}
-                onClick={() => cocherArticle(cat.id, article.id)}
+                onClick={() => cocherArticle(article.id, article.fait)}
                 className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all ${
                   article.fait
                     ? "bg-gray-50 opacity-50"
@@ -171,6 +164,15 @@ function ListeCourses() {
           </div>
         </div>
       ))}
+
+      {/* Liste vide */}
+      {!chargement && totalArticles === 0 && (
+        <div className="text-center text-gray-400 py-8">
+          <p className="text-4xl mb-2">🛒</p>
+          <p className="font-semibold">La liste est vide</p>
+          <p className="text-sm">Ajoute ton premier article !</p>
+        </div>
+      )}
     </div>
   );
 }

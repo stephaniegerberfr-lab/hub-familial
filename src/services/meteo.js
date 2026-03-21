@@ -1,4 +1,4 @@
-const CLE_API = "ebb66e7bbf68f1106c530ed97087f4ac";
+const CLE_API = import.meta.env.VITE_OPENWEATHER_KEY;
 
 export async function getMeteo() {
   const url = `https://api.openweathermap.org/data/2.5/weather?q=Septeme,FR&appid=${CLE_API}&units=metric&lang=fr`;

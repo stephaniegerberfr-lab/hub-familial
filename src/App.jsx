@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Header from "./components/Header";
 import ProfilsMembres from "./components/ProfilsMembres";
+import Dashboard from "./components/Dashboard";
 
 function App() {
   const [membreActif, setMembreActif] = useState("famille");
@@ -12,12 +13,7 @@ function App() {
         membreActif={membreActif}
         onSelectMembre={setMembreActif}
       />
-      <div className="p-6">
-        <p className="text-gray-500 font-semibold">
-          Vue sélectionnée :{" "}
-          <span className="text-indigo-600">{membreActif}</span>
-        </p>
-      </div>
+      <Dashboard membreActif={membreActif} />
     </div>
   );
 }

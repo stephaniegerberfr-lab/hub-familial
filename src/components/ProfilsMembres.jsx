@@ -3,7 +3,7 @@ const membres = [
   { id: "papa", nom: "Papa", couleur: "#78bae4", emoji: "👨" },
   { id: "maman", nom: "Maman", couleur: "#ab8fe3", emoji: "👩" },
   { id: "camille", nom: "Camille", couleur: "#8EA48B", emoji: "👧" },
-  { id: "chloe", nom: "Chloé", couleur: "#e9bcb5", emoji: "🧒" },
+  { id: "chloe", nom: "Chloé", couleur: "#e9bcb5", emoji: "👧" },
   { id: "clement", nom: "Clément", couleur: "#e8a366", emoji: "👦" },
 ];
 

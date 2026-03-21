@@ -5,6 +5,7 @@ import Dashboard from "./components/Dashboard";
 import ListeCourses from "./components/ListeCourses";
 import Calendrier from "./components/Calendrier";
 import Taches from "./components/Taches";
+import Famille from "./components/Famille";
 
 function App() {
   const [membreActif, setMembreActif] = useState("famille");
@@ -46,11 +47,7 @@ function App() {
       {ongletActif === "calendrier" && <Calendrier membreActif={membreActif} />}
       {ongletActif === "courses" && <ListeCourses />}
       {ongletActif === "taches" && <Taches membreActif={membreActif} />}
-      {ongletActif === "famille" && (
-        <div className="p-6 text-gray-400 font-semibold">
-          👨‍👩‍👧‍👦 Famille — bientôt disponible
-        </div>
-      )}
+      {ongletActif === "famille" && <Famille />}
     </div>
   );
 }

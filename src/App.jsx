@@ -4,6 +4,7 @@ import ProfilsMembres from "./components/ProfilsMembres";
 import Dashboard from "./components/Dashboard";
 import ListeCourses from "./components/ListeCourses";
 import Calendrier from "./components/Calendrier";
+import Taches from "./components/Taches";
 
 function App() {
   const [membreActif, setMembreActif] = useState("famille");
@@ -23,6 +24,7 @@ function App() {
           { id: "accueil", label: "🏠 Accueil" },
           { id: "calendrier", label: "📅 Calendrier" },
           { id: "courses", label: "🛒 Courses" },
+          { id: "taches", label: "✅ Tâches" },
           { id: "famille", label: "👨‍👩‍👧‍👦 Famille" },
         ].map((onglet) => (
           <button
@@ -43,6 +45,7 @@ function App() {
       {ongletActif === "accueil" && <Dashboard membreActif={membreActif} />}
       {ongletActif === "calendrier" && <Calendrier membreActif={membreActif} />}
       {ongletActif === "courses" && <ListeCourses />}
+      {ongletActif === "taches" && <Taches membreActif={membreActif} />}
       {ongletActif === "famille" && (
         <div className="p-6 text-gray-400 font-semibold">
           👨‍👩‍👧‍👦 Famille — bientôt disponible

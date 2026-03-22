@@ -36,7 +36,6 @@ const recurrences = [
   { id: "annuel", nom: "Annuel" },
 ];
 
-// Noms des mois en français pour la vue mensuelle
 const MOIS_FR = [
   "Janvier",
   "Février",
@@ -52,8 +51,18 @@ const MOIS_FR = [
   "Décembre",
 ];
 
-// Noms courts des jours (lundi en premier)
+// Noms courts des jours — lundi en premier (semaine européenne)
 const JOURS_SEMAINE = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+// Noms longs pour l'en-tête de la vue semaine (on affiche la date sous le nom)
+const JOURS_SEMAINE_LONG = [
+  "Lundi",
+  "Mardi",
+  "Mercredi",
+  "Jeudi",
+  "Vendredi",
+  "Samedi",
+  "Dimanche",
+];
 
 // ─────────────────────────────────────────────
 // FONCTIONS UTILITAIRES (inchangées)
@@ -119,33 +128,27 @@ function urlMaps(adresse) {
   );
 }
 
+// Formate une date "YYYY-MM-DD" en objet Date sans décalage fuseau horaire
+function parseDateLocale(dateStr) {
+  return new Date(dateStr + "T00:00:00");
+}
+
 // ─────────────────────────────────────────────
-// NOUVEAU : COMPOSANT VUE MENSUELLE
+// COMPOSANT VUE MENSUELLE (inchangé depuis session précédente)
 // ─────────────────────────────────────────────
-// Props reçues :
-//   evenementsFiltres : tableau des événements déjà filtrés par membre actif
-//   couleurMembre     : fonction (id) => couleur CSS
-//   onOuvrirDetail    : fonction (evenement) => ouvre le modal de détail
 function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
   const aujourd_hui = new Date();
-
-  // anneeAff et moisAff = le mois actuellement affiché dans la grille
   const [anneeAff, setAnneeAff] = useState(aujourd_hui.getFullYear());
-  const [moisAff, setMoisAff] = useState(aujourd_hui.getMonth()); // 0=jan, 11=dec
-
-  // jourOuvert = numéro du jour cliqué (null si aucun)
+  const [moisAff, setMoisAff] = useState(aujourd_hui.getMonth());
   const [jourOuvert, setJourOuvert] = useState(null);
 
-  // Navigation : mois précédent
   function allerMoisPrecedent() {
     if (moisAff === 0) {
       setMoisAff(11);
       setAnneeAff((a) => a - 1);
     } else setMoisAff((m) => m - 1);
-    setJourOuvert(null); // ferme le panneau de détail
+    setJourOuvert(null);
   }
-
-  // Navigation : mois suivant
   function allerMoisSuivant() {
     if (moisAff === 11) {
       setMoisAff(0);
@@ -153,31 +156,23 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
     } else setMoisAff((m) => m + 1);
     setJourOuvert(null);
   }
-
-  // Revenir au mois courant
   function allerAujourdhui() {
     setAnneeAff(aujourd_hui.getFullYear());
     setMoisAff(aujourd_hui.getMonth());
     setJourOuvert(null);
   }
 
-  // Calcule le décalage du 1er du mois (combien de cases vides avant le 1er)
-  // JavaScript : getDay() renvoie 0=dim, 1=lun, ..., 6=sam
-  // On veut que lundi soit la 1ère colonne → on transforme : lundi=0, ..., dim=6
   const premierJour = new Date(anneeAff, moisAff, 1);
-  const nombreJours = new Date(anneeAff, moisAff + 1, 0).getDate(); // dernier jour du mois
+  const nombreJours = new Date(anneeAff, moisAff + 1, 0).getDate();
   let decalage = premierJour.getDay();
-  decalage = decalage === 0 ? 6 : decalage - 1; // conversion : lundi = 0
+  decalage = decalage === 0 ? 6 : decalage - 1;
 
-  // Récupère les événements d'un numéro de jour (1-31) dans le mois affiché
   function evsDuJour(numJour) {
-    const mm = String(moisAff + 1).padStart(2, "0"); // ex: "03" pour mars
-    const dd = String(numJour).padStart(2, "0"); // ex: "07" pour le 7
-    const dateStr = `${anneeAff}-${mm}-${dd}`; // ex: "2024-03-07"
+    const mm = String(moisAff + 1).padStart(2, "0");
+    const dd = String(numJour).padStart(2, "0");
+    const dateStr = `${anneeAff}-${mm}-${dd}`;
     return evenementsFiltres.filter((ev) => ev.date === dateStr);
   }
-
-  // Vérifie si un numéro de jour correspond à aujourd'hui
   function estAujourdhui(numJour) {
     return (
       numJour === aujourd_hui.getDate() &&
@@ -186,19 +181,15 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
     );
   }
 
-  // Construit le tableau de toutes les cases de la grille :
-  // null pour les cases vides, puis les numéros de jours 1 → n
   const cases = [
     ...Array(decalage).fill(null),
     ...Array.from({ length: nombreJours }, (_, i) => i + 1),
   ];
-
-  // Événements du jour sélectionné (pour le panneau en bas de grille)
   const evsJourOuvert = jourOuvert ? evsDuJour(jourOuvert) : [];
 
   return (
     <div>
-      {/* ── Barre de navigation du mois ── */}
+      {/* Navigation mois */}
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={allerMoisPrecedent}
@@ -207,12 +198,10 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         >
           ‹
         </button>
-
         <div className="flex items-center gap-3">
           <h2 className="text-base font-bold text-gray-800">
             {MOIS_FR[moisAff]} {anneeAff}
           </h2>
-          {/* Bouton "Aujourd'hui" visible uniquement si on a navigué ailleurs */}
           {(anneeAff !== aujourd_hui.getFullYear() ||
             moisAff !== aujourd_hui.getMonth()) && (
             <button
@@ -223,7 +212,6 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
             </button>
           )}
         </div>
-
         <button
           onClick={allerMoisSuivant}
           className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
@@ -233,7 +221,7 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         </button>
       </div>
 
-      {/* ── En-tête des jours de la semaine ── */}
+      {/* En-tête jours */}
       <div className="grid grid-cols-7 mb-1">
         {JOURS_SEMAINE.map((j) => (
           <div
@@ -245,55 +233,35 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         ))}
       </div>
 
-      {/* ── Grille des jours ──
-          grid-cols-7 = 7 colonnes égales (une par jour de la semaine)
-          gap-px + bg-gray-100 = fines lignes de séparation entre les cases
-          rounded-xl + overflow-hidden = coins arrondis sur la grille entière */}
+      {/* Grille */}
       <div className="grid grid-cols-7 gap-px bg-gray-100 rounded-xl overflow-hidden border border-gray-100">
         {cases.map((numJour, index) => {
-          // Case vide — avant le 1er du mois
-          if (numJour === null) {
+          if (numJour === null)
             return (
               <div key={`vide-${index}`} className="bg-white h-14 sm:h-16" />
             );
-          }
-
           const evs = evsDuJour(numJour);
           const cEstAujourdhui = estAujourdhui(numJour);
           const estSelectionne = jourOuvert === numJour;
-
           return (
             <button
               key={numJour}
               onClick={() => setJourOuvert(estSelectionne ? null : numJour)}
-              className={`
-                bg-white h-14 sm:h-16 flex flex-col items-center pt-1.5 px-0.5
-                transition-colors
-                ${
-                  estSelectionne
-                    ? "bg-indigo-50 ring-2 ring-inset ring-indigo-300"
-                    : "hover:bg-gray-50"
-                }
-              `}
+              className={`bg-white h-14 sm:h-16 flex flex-col items-center pt-1.5 px-0.5 transition-colors
+                ${estSelectionne ? "bg-indigo-50 ring-2 ring-inset ring-indigo-300" : "hover:bg-gray-50"}`}
             >
-              {/* Numéro du jour : cercle bleu indigo si c'est aujourd'hui */}
               <span
-                className={`
-                w-7 h-7 flex items-center justify-center rounded-full
-                text-sm mb-0.5 transition-colors
+                className={`w-7 h-7 flex items-center justify-center rounded-full text-sm mb-0.5 transition-colors
                 ${
                   cEstAujourdhui
                     ? "bg-indigo-600 text-white font-bold"
                     : estSelectionne
                       ? "text-indigo-700 font-bold"
                       : "text-gray-700 font-medium"
-                }
-              `}
+                }`}
               >
                 {numJour}
               </span>
-
-              {/* Points colorés — un point par événement (max 3, puis "+n") */}
               {evs.length > 0 && (
                 <div className="flex gap-0.5 flex-wrap justify-center">
                   {evs.slice(0, 3).map((ev, i) => (
@@ -319,9 +287,7 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         })}
       </div>
 
-      {/* ── Panneau détail du jour cliqué ──
-          Apparaît sous la grille, liste les événements du jour
-          Cliquer sur un événement → ouvre le modal de détail */}
+      {/* Panneau détail jour */}
       {jourOuvert && (
         <div className="mt-3 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
@@ -343,7 +309,6 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
               ×
             </button>
           </div>
-
           {evsJourOuvert.length === 0 ? (
             <p className="px-4 py-5 text-sm text-gray-400 text-center">
               Aucun événement ce jour
@@ -384,6 +349,223 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
 }
 
 // ─────────────────────────────────────────────
+// NOUVEAU : COMPOSANT VUE SEMAINE
+// ─────────────────────────────────────────────
+// Comment ça marche :
+//   On calcule le lundi de la semaine en cours.
+//   Un tableau de 7 dates (lun → dim) est affiché en colonnes.
+//   La navigation ← → déplace ce lundi de ±7 jours.
+//   Chaque événement s'affiche dans la colonne de son jour.
+function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
+  const aujourd_hui = new Date();
+  aujourd_hui.setHours(0, 0, 0, 0); // minuit pour comparaisons fiables
+
+  // Calcule le lundi de la semaine de `date`
+  // getDay() : 0=dim, 1=lun … on veut reculer jusqu'au lundi
+  function getLundiDeLaSemaine(date) {
+    const d = new Date(date);
+    const jour = d.getDay(); // 0=dim, 1=lun, …, 6=sam
+    // Si dimanche (0), on recule de 6 jours ; sinon de (jour - 1) jours
+    const diff = jour === 0 ? -6 : 1 - jour;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  // lundiRef = le lundi de la semaine affichée
+  // useState avec une fonction initiale : exécutée une seule fois au montage
+  const [lundiRef, setLundiRef] = useState(() =>
+    getLundiDeLaSemaine(new Date()),
+  );
+
+  // Navigue à la semaine précédente : lundi - 7 jours
+  function semainePrec() {
+    setLundiRef((d) => {
+      const n = new Date(d);
+      n.setDate(n.getDate() - 7);
+      return n;
+    });
+  }
+
+  // Navigue à la semaine suivante : lundi + 7 jours
+  function semaineSuiv() {
+    setLundiRef((d) => {
+      const n = new Date(d);
+      n.setDate(n.getDate() + 7);
+      return n;
+    });
+  }
+
+  // Revient à la semaine contenant aujourd'hui
+  function allerAujourdhui() {
+    setLundiRef(getLundiDeLaSemaine(new Date()));
+  }
+
+  // Construit un tableau de 7 dates : [lundi, mardi, …, dimanche]
+  // Array.from({length:7}, (_,i) => ...) = crée 7 éléments, i va de 0 à 6
+  const joursDeLaSemaine = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(lundiRef);
+    d.setDate(lundiRef.getDate() + i); // lundi+0, lundi+1, …, lundi+6
+    return d;
+  });
+
+  // Récupère les événements d'une date précise (objet Date)
+  function evsDuJour(date) {
+    // On formate la date en "YYYY-MM-DD" pour correspondre au format Firebase
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${date.getFullYear()}-${mm}-${dd}`;
+    return evenementsFiltres.filter((ev) => ev.date === dateStr);
+  }
+
+  // Est-ce que la date correspond à aujourd'hui ?
+  function estAujourdhui(date) {
+    return date.getTime() === aujourd_hui.getTime();
+  }
+
+  // Est-ce que la semaine affichée EST la semaine en cours ?
+  const semaineCourante = getLundiDeLaSemaine(new Date());
+  const estSemaineCourante = lundiRef.getTime() === semaineCourante.getTime();
+
+  // Libellé de la période affichée, ex : "17 – 23 mars 2025"
+  const dimanche = joursDeLaSemaine[6];
+  const labelDebut = joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+  });
+  const labelFin = dimanche.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const labelPeriode = `${labelDebut} – ${labelFin}`;
+
+  return (
+    <div>
+      {/* ── Navigation semaine ── */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={semainePrec}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
+          aria-label="Semaine précédente"
+        >
+          ‹
+        </button>
+
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-gray-700">
+            {labelPeriode}
+          </span>
+          {/* Bouton "Aujourd'hui" uniquement si on n'est pas sur la semaine courante */}
+          {!estSemaineCourante && (
+            <button
+              onClick={allerAujourdhui}
+              className="text-xs text-indigo-600 font-bold border border-indigo-200 px-2 py-0.5 rounded-lg hover:bg-indigo-50 transition-colors"
+            >
+              Aujourd'hui
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={semaineSuiv}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
+          aria-label="Semaine suivante"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* ── Grille des 7 jours ──
+          7 colonnes de largeur égale
+          Chaque colonne = en-tête (nom + numéro) + liste d'événements */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {joursDeLaSemaine.map((date, i) => {
+          const evs = evsDuJour(date);
+          const cEstAujourdhui = estAujourdhui(date);
+
+          return (
+            <div key={i} className="flex flex-col">
+              {/* ── En-tête de la colonne ──
+                  Fond indigo + texte blanc si c'est aujourd'hui, gris sinon */}
+              <div
+                className={`
+                rounded-xl py-2 px-1 text-center mb-1.5
+                ${
+                  cEstAujourdhui
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-50 text-gray-600"
+                }
+              `}
+              >
+                {/* Nom court du jour : "Lun", "Mar"… */}
+                <div className="text-xs font-bold uppercase tracking-wide">
+                  {JOURS_SEMAINE[i]}
+                </div>
+                {/* Numéro du jour : "22", "23"… */}
+                <div className="text-lg font-bold leading-tight">
+                  {date.getDate()}
+                </div>
+                {/* Mois en petit si c'est le 1er du mois — utile pour repérer les changements de mois */}
+                {date.getDate() === 1 && (
+                  <div className="text-xs opacity-75">
+                    {MOIS_FR[date.getMonth()].slice(0, 3)}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Événements de la journée ──
+                  Pastilles colorées avec le titre tronqué
+                  Clic → modal de détail */}
+              <div className="flex flex-col gap-1 min-h-[3rem]">
+                {evs.length === 0 ? (
+                  // Ligne vide subtile pour garder la hauteur de la colonne
+                  <div className="h-1" />
+                ) : (
+                  evs.map((ev) => (
+                    <button
+                      key={ev.id}
+                      onClick={() => onOuvrirDetail(ev)}
+                      style={{ backgroundColor: couleurMembre(ev.membre) }}
+                      className="w-full text-left rounded-lg px-1.5 py-1 transition-opacity hover:opacity-80 active:opacity-60"
+                      title={ev.titre}
+                    >
+                      {/* Heure si disponible */}
+                      {ev.heureDebut && ev.heureDebut !== "00:00" && (
+                        <div
+                          className="text-gray-600 font-bold leading-none mb-0.5"
+                          style={{ fontSize: "9px" }}
+                        >
+                          {ev.heureDebut}
+                        </div>
+                      )}
+                      {/* Titre tronqué — text-xs sur mobile, un peu plus grand sur desktop */}
+                      <div
+                        className="text-gray-800 font-bold leading-tight truncate"
+                        style={{ fontSize: "10px" }}
+                      >
+                        {ev.titre}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Message si aucun événement cette semaine ── */}
+      {joursDeLaSemaine.every((d) => evsDuJour(d).length === 0) && (
+        <div className="text-center text-gray-400 py-6 text-sm mt-2">
+          Aucun événement cette semaine
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // COMPOSANT PRINCIPAL : Calendrier
 // ─────────────────────────────────────────────
 function Calendrier({ membreActif }) {
@@ -392,8 +574,7 @@ function Calendrier({ membreActif }) {
   const [chargement, setChargement] = useState(true);
   const [evenementDetail, setEvenementDetail] = useState(null);
 
-  // ── NOUVEAU : état pour la vue active ──
-  // "liste" = vue liste existante | "mois" = nouvelle vue mensuelle
+  // "liste" | "semaine" | "mois"
   const [vue, setVue] = useState("liste");
 
   // États du formulaire (inchangés)
@@ -408,7 +589,7 @@ function Calendrier({ membreActif }) {
   const [lieuType, setLieuType] = useState("texte");
   const [description, setDescription] = useState("");
 
-  // Chargement Firebase temps réel (inchangé)
+  // Chargement Firebase (inchangé)
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "evenements"), (snapshot) => {
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -503,7 +684,7 @@ function Calendrier({ membreActif }) {
   const nomMembre = (id) =>
     membresAffichage.find((m) => m.id === id)?.nom || "Famille";
   const formatDate = (dateStr) =>
-    new Date(dateStr + "T00:00:00").toLocaleDateString("fr-FR", {
+    parseDateLocale(dateStr).toLocaleDateString("fr-FR", {
       weekday: "long",
       day: "numeric",
       month: "long",
@@ -533,7 +714,7 @@ function Calendrier({ membreActif }) {
   // ─────────────────────────────────────────────
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      {/* ── En-tête : titre + bouton Ajouter (inchangé) ── */}
+      {/* ── En-tête (inchangé) ── */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">📅 Calendrier</h2>
         <button
@@ -544,12 +725,13 @@ function Calendrier({ membreActif }) {
         </button>
       </div>
 
-      {/* ── NOUVEAU : Sélecteur de vue ──
-          Deux boutons : Liste (vue existante) | Mois (nouvelle vue)
-          Le bouton actif est blanc avec ombre, les autres sont gris */}
+      {/* ── Sélecteur 3 vues : Liste | Semaine | Mois ──
+          Principe : fond gris global, bouton actif = blanc avec ombre
+          flex-1 = chaque bouton prend la même largeur */}
       <div className="flex bg-gray-100 rounded-xl p-1 gap-1 mb-5">
         {[
           { id: "liste", label: "📋 Liste" },
+          { id: "semaine", label: "📆 Semaine" },
           { id: "mois", label: "📅 Mois" },
         ].map(({ id, label }) => (
           <button
@@ -860,10 +1042,16 @@ function Calendrier({ membreActif }) {
         <div className="text-center text-gray-400 py-8">Chargement...</div>
       )}
 
-      {/* ── NOUVEAU : Vue mensuelle ──
-          Affichée uniquement quand vue === "mois"
-          On lui passe les événements filtrés, la fonction couleur,
-          et la fonction pour ouvrir le modal de détail */}
+      {/* ── Vue SEMAINE (nouvelle) ── */}
+      {!chargement && vue === "semaine" && (
+        <VueSemaine
+          evenementsFiltres={evenementsFiltres}
+          couleurMembre={couleurMembre}
+          onOuvrirDetail={setEvenementDetail}
+        />
+      )}
+
+      {/* ── Vue MOIS (session précédente) ── */}
       {!chargement && vue === "mois" && (
         <VueMensuelle
           evenementsFiltres={evenementsFiltres}
@@ -872,7 +1060,7 @@ function Calendrier({ membreActif }) {
         />
       )}
 
-      {/* ── Vue liste (inchangée, affichée si vue === "liste") ── */}
+      {/* ── Vue LISTE (originale, inchangée) ── */}
       {!chargement && vue === "liste" && (
         <>
           {Object.keys(evenementsParDate)
@@ -913,7 +1101,6 @@ function Calendrier({ membreActif }) {
                 </div>
               </div>
             ))}
-
           {evenementsFiltres.length === 0 && (
             <div className="text-center text-gray-400 py-8">
               <p className="text-4xl mb-2">📅</p>

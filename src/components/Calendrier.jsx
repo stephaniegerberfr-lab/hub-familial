@@ -12,6 +12,9 @@ import {
   getDocs,
 } from "firebase/firestore";
 
+// ─────────────────────────────────────────────
+// DONNÉES DE BASE (inchangées)
+// ─────────────────────────────────────────────
 const membres = [
   { id: "papa", nom: "Papa", couleur: "#78bae4" },
   { id: "maman", nom: "Maman", couleur: "#ab8fe3" },
@@ -33,6 +36,28 @@ const recurrences = [
   { id: "annuel", nom: "Annuel" },
 ];
 
+// Noms des mois en français pour la vue mensuelle
+const MOIS_FR = [
+  "Janvier",
+  "Février",
+  "Mars",
+  "Avril",
+  "Mai",
+  "Juin",
+  "Juillet",
+  "Août",
+  "Septembre",
+  "Octobre",
+  "Novembre",
+  "Décembre",
+];
+
+// Noms courts des jours (lundi en premier)
+const JOURS_SEMAINE = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+// ─────────────────────────────────────────────
+// FONCTIONS UTILITAIRES (inchangées)
+// ─────────────────────────────────────────────
 function exporterIcal(evenement) {
   const dateDebut = evenement.date.replace(/-/g, "");
   const heureDebut = (evenement.heureDebut || "00:00").replace(":", "");
@@ -94,11 +119,284 @@ function urlMaps(adresse) {
   );
 }
 
+// ─────────────────────────────────────────────
+// NOUVEAU : COMPOSANT VUE MENSUELLE
+// ─────────────────────────────────────────────
+// Props reçues :
+//   evenementsFiltres : tableau des événements déjà filtrés par membre actif
+//   couleurMembre     : fonction (id) => couleur CSS
+//   onOuvrirDetail    : fonction (evenement) => ouvre le modal de détail
+function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
+  const aujourd_hui = new Date();
+
+  // anneeAff et moisAff = le mois actuellement affiché dans la grille
+  const [anneeAff, setAnneeAff] = useState(aujourd_hui.getFullYear());
+  const [moisAff, setMoisAff] = useState(aujourd_hui.getMonth()); // 0=jan, 11=dec
+
+  // jourOuvert = numéro du jour cliqué (null si aucun)
+  const [jourOuvert, setJourOuvert] = useState(null);
+
+  // Navigation : mois précédent
+  function allerMoisPrecedent() {
+    if (moisAff === 0) {
+      setMoisAff(11);
+      setAnneeAff((a) => a - 1);
+    } else setMoisAff((m) => m - 1);
+    setJourOuvert(null); // ferme le panneau de détail
+  }
+
+  // Navigation : mois suivant
+  function allerMoisSuivant() {
+    if (moisAff === 11) {
+      setMoisAff(0);
+      setAnneeAff((a) => a + 1);
+    } else setMoisAff((m) => m + 1);
+    setJourOuvert(null);
+  }
+
+  // Revenir au mois courant
+  function allerAujourdhui() {
+    setAnneeAff(aujourd_hui.getFullYear());
+    setMoisAff(aujourd_hui.getMonth());
+    setJourOuvert(null);
+  }
+
+  // Calcule le décalage du 1er du mois (combien de cases vides avant le 1er)
+  // JavaScript : getDay() renvoie 0=dim, 1=lun, ..., 6=sam
+  // On veut que lundi soit la 1ère colonne → on transforme : lundi=0, ..., dim=6
+  const premierJour = new Date(anneeAff, moisAff, 1);
+  const nombreJours = new Date(anneeAff, moisAff + 1, 0).getDate(); // dernier jour du mois
+  let decalage = premierJour.getDay();
+  decalage = decalage === 0 ? 6 : decalage - 1; // conversion : lundi = 0
+
+  // Récupère les événements d'un numéro de jour (1-31) dans le mois affiché
+  function evsDuJour(numJour) {
+    const mm = String(moisAff + 1).padStart(2, "0"); // ex: "03" pour mars
+    const dd = String(numJour).padStart(2, "0"); // ex: "07" pour le 7
+    const dateStr = `${anneeAff}-${mm}-${dd}`; // ex: "2024-03-07"
+    return evenementsFiltres.filter((ev) => ev.date === dateStr);
+  }
+
+  // Vérifie si un numéro de jour correspond à aujourd'hui
+  function estAujourdhui(numJour) {
+    return (
+      numJour === aujourd_hui.getDate() &&
+      moisAff === aujourd_hui.getMonth() &&
+      anneeAff === aujourd_hui.getFullYear()
+    );
+  }
+
+  // Construit le tableau de toutes les cases de la grille :
+  // null pour les cases vides, puis les numéros de jours 1 → n
+  const cases = [
+    ...Array(decalage).fill(null),
+    ...Array.from({ length: nombreJours }, (_, i) => i + 1),
+  ];
+
+  // Événements du jour sélectionné (pour le panneau en bas de grille)
+  const evsJourOuvert = jourOuvert ? evsDuJour(jourOuvert) : [];
+
+  return (
+    <div>
+      {/* ── Barre de navigation du mois ── */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={allerMoisPrecedent}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
+          aria-label="Mois précédent"
+        >
+          ‹
+        </button>
+
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-bold text-gray-800">
+            {MOIS_FR[moisAff]} {anneeAff}
+          </h2>
+          {/* Bouton "Aujourd'hui" visible uniquement si on a navigué ailleurs */}
+          {(anneeAff !== aujourd_hui.getFullYear() ||
+            moisAff !== aujourd_hui.getMonth()) && (
+            <button
+              onClick={allerAujourdhui}
+              className="text-xs text-indigo-600 font-bold border border-indigo-200 px-2 py-0.5 rounded-lg hover:bg-indigo-50 transition-colors"
+            >
+              Aujourd'hui
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={allerMoisSuivant}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
+          aria-label="Mois suivant"
+        >
+          ›
+        </button>
+      </div>
+
+      {/* ── En-tête des jours de la semaine ── */}
+      <div className="grid grid-cols-7 mb-1">
+        {JOURS_SEMAINE.map((j) => (
+          <div
+            key={j}
+            className="text-center text-xs font-bold text-gray-400 py-1"
+          >
+            {j}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Grille des jours ──
+          grid-cols-7 = 7 colonnes égales (une par jour de la semaine)
+          gap-px + bg-gray-100 = fines lignes de séparation entre les cases
+          rounded-xl + overflow-hidden = coins arrondis sur la grille entière */}
+      <div className="grid grid-cols-7 gap-px bg-gray-100 rounded-xl overflow-hidden border border-gray-100">
+        {cases.map((numJour, index) => {
+          // Case vide — avant le 1er du mois
+          if (numJour === null) {
+            return (
+              <div key={`vide-${index}`} className="bg-white h-14 sm:h-16" />
+            );
+          }
+
+          const evs = evsDuJour(numJour);
+          const cEstAujourdhui = estAujourdhui(numJour);
+          const estSelectionne = jourOuvert === numJour;
+
+          return (
+            <button
+              key={numJour}
+              onClick={() => setJourOuvert(estSelectionne ? null : numJour)}
+              className={`
+                bg-white h-14 sm:h-16 flex flex-col items-center pt-1.5 px-0.5
+                transition-colors
+                ${
+                  estSelectionne
+                    ? "bg-indigo-50 ring-2 ring-inset ring-indigo-300"
+                    : "hover:bg-gray-50"
+                }
+              `}
+            >
+              {/* Numéro du jour : cercle bleu indigo si c'est aujourd'hui */}
+              <span
+                className={`
+                w-7 h-7 flex items-center justify-center rounded-full
+                text-sm mb-0.5 transition-colors
+                ${
+                  cEstAujourdhui
+                    ? "bg-indigo-600 text-white font-bold"
+                    : estSelectionne
+                      ? "text-indigo-700 font-bold"
+                      : "text-gray-700 font-medium"
+                }
+              `}
+              >
+                {numJour}
+              </span>
+
+              {/* Points colorés — un point par événement (max 3, puis "+n") */}
+              {evs.length > 0 && (
+                <div className="flex gap-0.5 flex-wrap justify-center">
+                  {evs.slice(0, 3).map((ev, i) => (
+                    <span
+                      key={i}
+                      style={{ backgroundColor: couleurMembre(ev.membre) }}
+                      className="w-1.5 h-1.5 rounded-full block"
+                      title={ev.titre}
+                    />
+                  ))}
+                  {evs.length > 3 && (
+                    <span
+                      className="text-gray-400 leading-none"
+                      style={{ fontSize: "8px" }}
+                    >
+                      +{evs.length - 3}
+                    </span>
+                  )}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Panneau détail du jour cliqué ──
+          Apparaît sous la grille, liste les événements du jour
+          Cliquer sur un événement → ouvre le modal de détail */}
+      {jourOuvert && (
+        <div className="mt-3 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-bold text-gray-700 text-sm capitalize">
+              {new Date(anneeAff, moisAff, jourOuvert).toLocaleDateString(
+                "fr-FR",
+                {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                },
+              )}
+            </h3>
+            <button
+              onClick={() => setJourOuvert(null)}
+              className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+          </div>
+
+          {evsJourOuvert.length === 0 ? (
+            <p className="px-4 py-5 text-sm text-gray-400 text-center">
+              Aucun événement ce jour
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {evsJourOuvert.map((ev) => (
+                <li
+                  key={ev.id}
+                  onClick={() => onOuvrirDetail(ev)}
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                >
+                  <span
+                    style={{ backgroundColor: couleurMembre(ev.membre) }}
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-gray-800 text-sm truncate">
+                      {ev.titre}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {ev.heureDebut &&
+                        `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `}
+                      {membresAffichage.find((m) => m.id === ev.membre)?.nom ||
+                        "Famille"}
+                      {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-gray-300 text-sm flex-shrink-0">›</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// COMPOSANT PRINCIPAL : Calendrier
+// ─────────────────────────────────────────────
 function Calendrier({ membreActif }) {
   const [evenements, setEvenements] = useState([]);
   const [afficherFormulaire, setAfficherFormulaire] = useState(false);
   const [chargement, setChargement] = useState(true);
   const [evenementDetail, setEvenementDetail] = useState(null);
+
+  // ── NOUVEAU : état pour la vue active ──
+  // "liste" = vue liste existante | "mois" = nouvelle vue mensuelle
+  const [vue, setVue] = useState("liste");
+
+  // États du formulaire (inchangés)
   const [titre, setTitre] = useState("");
   const [date, setDate] = useState("");
   const [heureDebut, setHeureDebut] = useState("");
@@ -110,6 +408,7 @@ function Calendrier({ membreActif }) {
   const [lieuType, setLieuType] = useState("texte");
   const [description, setDescription] = useState("");
 
+  // Chargement Firebase temps réel (inchangé)
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "evenements"), (snapshot) => {
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -229,10 +528,12 @@ function Calendrier({ membreActif }) {
     return acc;
   }, {});
 
-  // ---- RENDU ----
+  // ─────────────────────────────────────────────
+  // RENDU
+  // ─────────────────────────────────────────────
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      {/* Header */}
+      {/* ── En-tête : titre + bouton Ajouter (inchangé) ── */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">📅 Calendrier</h2>
         <button
@@ -243,7 +544,32 @@ function Calendrier({ membreActif }) {
         </button>
       </div>
 
-      {/* Formulaire */}
+      {/* ── NOUVEAU : Sélecteur de vue ──
+          Deux boutons : Liste (vue existante) | Mois (nouvelle vue)
+          Le bouton actif est blanc avec ombre, les autres sont gris */}
+      <div className="flex bg-gray-100 rounded-xl p-1 gap-1 mb-5">
+        {[
+          { id: "liste", label: "📋 Liste" },
+          { id: "mois", label: "📅 Mois" },
+        ].map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setVue(id)}
+            className={`
+              flex-1 py-2 rounded-lg text-sm font-bold transition-all
+              ${
+                vue === id
+                  ? "bg-white shadow text-indigo-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }
+            `}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Formulaire d'ajout (inchangé) ── */}
       {afficherFormulaire && (
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
           <h3 className="text-sm font-bold text-gray-600 mb-4">
@@ -257,7 +583,6 @@ function Calendrier({ membreActif }) {
               placeholder="Titre de l'événement..."
               className="border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
             />
-
             <div>
               <label className="text-xs font-bold text-gray-400 mb-1 block">
                 Date
@@ -269,7 +594,6 @@ function Calendrier({ membreActif }) {
                 className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
               />
             </div>
-
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-xs font-bold text-gray-400 mb-1 block">
@@ -294,7 +618,6 @@ function Calendrier({ membreActif }) {
                 />
               </div>
             </div>
-
             <div>
               <label className="text-xs font-bold text-gray-400 mb-1 block">
                 Récurrence
@@ -311,7 +634,6 @@ function Calendrier({ membreActif }) {
                 ))}
               </select>
             </div>
-
             {recurrence !== "aucune" && (
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-1 block">
@@ -323,13 +645,12 @@ function Calendrier({ membreActif }) {
                 <input
                   type="date"
                   value={dateFinRecurrence}
-                  onChange={(e) => setDateFinRecurrence(e.target.value)}
                   min={date}
+                  onChange={(e) => setDateFinRecurrence(e.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
                 />
               </div>
             )}
-
             <div>
               <label className="text-xs font-bold text-gray-400 mb-2 block">
                 Qui est concerné ?{" "}
@@ -357,7 +678,6 @@ function Calendrier({ membreActif }) {
                 ))}
               </div>
             </div>
-
             {/* Lieu */}
             <div>
               <label className="text-xs font-bold text-gray-400 mb-2 block">
@@ -393,7 +713,6 @@ function Calendrier({ membreActif }) {
                   📍 Recherche Google Maps
                 </button>
               </div>
-
               {lieuType === "texte" && (
                 <input
                   type="text"
@@ -403,7 +722,6 @@ function Calendrier({ membreActif }) {
                   className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
                 />
               )}
-
               {lieuType === "maps" && (
                 <div className="flex gap-2">
                   <input
@@ -425,7 +743,6 @@ function Calendrier({ membreActif }) {
                 </div>
               )}
             </div>
-
             <div>
               <label className="text-xs font-bold text-gray-400 mb-1 block">
                 Description
@@ -438,7 +755,6 @@ function Calendrier({ membreActif }) {
                 className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400 resize-none"
               />
             </div>
-
             <div className="flex gap-2">
               <button
                 onClick={ajouterEvenement}
@@ -457,7 +773,7 @@ function Calendrier({ membreActif }) {
         </div>
       )}
 
-      {/* Modal détail */}
+      {/* ── Modal de détail (inchangé) ── */}
       {evenementDetail && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-96 shadow-xl">
@@ -477,7 +793,6 @@ function Calendrier({ membreActif }) {
                 </p>
               </div>
             </div>
-
             <div className="flex flex-col gap-2 text-sm text-gray-600 mb-4">
               <p>📅 {formatDate(evenementDetail.date)}</p>
               {evenementDetail.heureDebut && (
@@ -488,7 +803,6 @@ function Calendrier({ membreActif }) {
                     : ""}
                 </p>
               )}
-
               {evenementDetail.lieu && evenementDetail.lieuType === "maps" && (
                 <button
                   type="button"
@@ -503,7 +817,6 @@ function Calendrier({ membreActif }) {
               {evenementDetail.lieu && evenementDetail.lieuType !== "maps" && (
                 <p>📍 {evenementDetail.lieu}</p>
               )}
-
               {evenementDetail.description && (
                 <p>📝 {evenementDetail.description}</p>
               )}
@@ -519,7 +832,6 @@ function Calendrier({ membreActif }) {
                   </p>
                 )}
             </div>
-
             <div className="flex gap-2">
               <button
                 onClick={() => exporterIcal(evenementDetail)}
@@ -548,52 +860,68 @@ function Calendrier({ membreActif }) {
         <div className="text-center text-gray-400 py-8">Chargement...</div>
       )}
 
-      {/* Liste événements */}
-      {Object.keys(evenementsParDate)
-        .sort()
-        .map((dateStr) => (
-          <div key={dateStr} className="mb-4">
-            <p className="text-xs font-bold text-gray-400 uppercase mb-2 capitalize">
-              {formatDate(dateStr)}
-            </p>
-            <div className="flex flex-col gap-2">
-              {evenementsParDate[dateStr].map((ev) => (
-                <div
-                  key={ev.id}
-                  onClick={() => setEvenementDetail(ev)}
-                  className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all"
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: couleurMembre(ev.membre) }}
-                  />
-                  <div className="flex-1">
-                    <p className="font-bold text-gray-800 text-sm">
-                      {ev.titre}
-                    </p>
-                    <p className="text-gray-400 text-xs">
-                      {ev.heureDebut || ev.heure}
-                      {ev.heureFin ? ` → ${ev.heureFin}` : ""}
-                      {" · "}
-                      {nomMembre(ev.membre)}
-                      {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                      {ev.recurrence && ev.recurrence !== "aucune"
-                        ? " · 🔁"
-                        : ""}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+      {/* ── NOUVEAU : Vue mensuelle ──
+          Affichée uniquement quand vue === "mois"
+          On lui passe les événements filtrés, la fonction couleur,
+          et la fonction pour ouvrir le modal de détail */}
+      {!chargement && vue === "mois" && (
+        <VueMensuelle
+          evenementsFiltres={evenementsFiltres}
+          couleurMembre={couleurMembre}
+          onOuvrirDetail={setEvenementDetail}
+        />
+      )}
 
-      {!chargement && evenementsFiltres.length === 0 && (
-        <div className="text-center text-gray-400 py-8">
-          <p className="text-4xl mb-2">📅</p>
-          <p className="font-semibold">Aucun événement</p>
-          <p className="text-sm">Ajoute ton premier événement !</p>
-        </div>
+      {/* ── Vue liste (inchangée, affichée si vue === "liste") ── */}
+      {!chargement && vue === "liste" && (
+        <>
+          {Object.keys(evenementsParDate)
+            .sort()
+            .map((dateStr) => (
+              <div key={dateStr} className="mb-4">
+                <p className="text-xs font-bold text-gray-400 uppercase mb-2 capitalize">
+                  {formatDate(dateStr)}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {evenementsParDate[dateStr].map((ev) => (
+                    <div
+                      key={ev.id}
+                      onClick={() => setEvenementDetail(ev)}
+                      className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all"
+                    >
+                      <div
+                        className="w-10 h-10 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: couleurMembre(ev.membre) }}
+                      />
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-800 text-sm">
+                          {ev.titre}
+                        </p>
+                        <p className="text-gray-400 text-xs">
+                          {ev.heureDebut || ev.heure}
+                          {ev.heureFin ? ` → ${ev.heureFin}` : ""}
+                          {" · "}
+                          {nomMembre(ev.membre)}
+                          {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                          {ev.recurrence && ev.recurrence !== "aucune"
+                            ? " · 🔁"
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+          {evenementsFiltres.length === 0 && (
+            <div className="text-center text-gray-400 py-8">
+              <p className="text-4xl mb-2">📅</p>
+              <p className="font-semibold">Aucun événement</p>
+              <p className="text-sm">Ajoute ton premier événement !</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

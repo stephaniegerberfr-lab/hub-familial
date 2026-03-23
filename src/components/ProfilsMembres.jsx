@@ -1,5 +1,5 @@
 const membres = [
-  { id: "famille", nom: "Famille", couleur: "#f2e8df", emoji: "👨‍👩‍👧‍👦" },
+  { id: "famille", nom: "Famille", couleur: "#4A4E69", emoji: "👨‍👩‍👧‍👦" },
   { id: "papa", nom: "Papa", couleur: "#78bae4", emoji: "👨" },
   { id: "maman", nom: "Maman", couleur: "#ab8fe3", emoji: "👩" },
   { id: "camille", nom: "Camille", couleur: "#8EA48B", emoji: "👧" },

@@ -3,7 +3,7 @@ import { db } from "../services/firebase";
 import { collection, onSnapshot, updateDoc, doc } from "firebase/firestore";
 
 const membres = [
-  { id: "famille", nom: "Famille", couleur: "#f2e8df" },
+  { id: "famille", nom: "Famille", couleur: "#4A4E69" },
   { id: "papa", nom: "Papa", couleur: "#78bae4" },
   { id: "maman", nom: "Maman", couleur: "#ab8fe3" },
   { id: "camille", nom: "Camille", couleur: "#8EA48B" },
@@ -51,7 +51,7 @@ function Dashboard({ membreActif }) {
   }, []);
 
   const couleurMembre = (membreId) =>
-    membres.find((m) => m.id === membreId)?.couleur || "#f2e8df";
+    membres.find((m) => m.id === membreId)?.couleur || "#4A4E69";
 
   const nomMembre = (membreId) =>
     membres.find((m) => m.id === membreId)?.nom || "Famille";

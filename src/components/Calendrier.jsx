@@ -3,7 +3,6 @@ import { db } from "../services/firebase";
 import {
   collection,
   onSnapshot,
-  deleteDoc,
   doc,
   serverTimestamp,
   writeBatch,
@@ -24,7 +23,7 @@ const membres = [
 ];
 
 const membresAffichage = [
-  { id: "famille", nom: "Famille", couleur: "#f2e8df" },
+  { id: "famille", nom: "Famille", couleur: "#3D3D3D" },
   ...membres,
 ];
 
@@ -51,18 +50,52 @@ const MOIS_FR = [
   "Décembre",
 ];
 
-// Noms courts des jours — lundi en premier (semaine européenne)
 const JOURS_SEMAINE = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-// Noms longs pour l'en-tête de la vue semaine (on affiche la date sous le nom)
-const JOURS_SEMAINE_LONG = [
-  "Lundi",
-  "Mardi",
-  "Mercredi",
-  "Jeudi",
-  "Vendredi",
-  "Samedi",
-  "Dimanche",
-];
+
+// ─────────────────────────────────────────────
+// ★ NOUVELLE FONCTION CENTRALE : regrouperEvenements
+// ─────────────────────────────────────────────
+// Problème résolu : un événement créé pour 5 membres génère 5 docs Firebase.
+// Cette fonction fusionne ces 5 docs en 1 seul objet avec membres = ["papa","maman",...]
+//
+// La "clé de regroupement" = titre + date + heureDebut + serieId
+// Si ces 4 valeurs sont identiques → c'est le MÊME événement → on fusionne.
+//
+// Résultat : chaque événement groupé a :
+//   - tous les champs du 1er document (titre, date, heure, lieu, etc.)
+//   - un champ `membres` = tableau ["papa", "maman", ...]
+//   - un champ `ids` = tableau des ids Firebase de chaque doc (pour la suppression)
+function regrouperEvenements(liste) {
+  // On utilise un Map (dictionnaire) : clé → événement groupé
+  // Map préserve l'ordre d'insertion, contrairement à un objet {}
+  const map = new Map();
+
+  for (const ev of liste) {
+    // Construit la clé : on remplace les caractères qui pourraient poser problème
+    // serieId peut être null → on utilise "" dans ce cas
+    const cle = `${ev.titre}__${ev.date}__${ev.heureDebut || ""}__${ev.serieId || ""}`;
+
+    if (map.has(cle)) {
+      // Cet événement existe déjà dans le Map → on ajoute juste le membre
+      const existant = map.get(cle);
+      // On évite les doublons de membres (sécurité)
+      if (!existant.membres.includes(ev.membre)) {
+        existant.membres.push(ev.membre);
+        existant.ids.push(ev.id);
+      }
+    } else {
+      // Nouvel événement → on crée l'entrée avec un tableau membres à 1 élément
+      map.set(cle, {
+        ...ev, // copie tous les champs (titre, date, lieu, etc.)
+        membres: [ev.membre], // tableau des participants — commence avec le 1er
+        ids: [ev.id], // tableau des ids Firebase — pour la suppression
+      });
+    }
+  }
+
+  // Map.values() retourne un itérateur → on le convertit en tableau
+  return Array.from(map.values());
+}
 
 // ─────────────────────────────────────────────
 // FONCTIONS UTILITAIRES (inchangées)
@@ -128,15 +161,56 @@ function urlMaps(adresse) {
   );
 }
 
-// Formate une date "YYYY-MM-DD" en objet Date sans décalage fuseau horaire
 function parseDateLocale(dateStr) {
   return new Date(dateStr + "T00:00:00");
 }
 
 // ─────────────────────────────────────────────
-// COMPOSANT VUE MENSUELLE (inchangé depuis session précédente)
+// ★ NOUVEAU COMPOSANT : AvatarsMembres
 // ─────────────────────────────────────────────
-function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
+// Affiche une rangée de petits cercles colorés, un par participant.
+// Utilisé dans toutes les vues (liste, semaine, mois) et dans le modal.
+// Props :
+//   membresIds  : tableau d'ids ex: ["papa", "maman", "camille"]
+//   size        : "sm" (6px) | "md" (8px) | "lg" (10px)
+//   showNames   : true → affiche les noms en texte à côté des pastilles
+function AvatarsMembres({ membresIds = [], size = "md", showNames = false }) {
+  if (!membresIds || membresIds.length === 0) return null;
+
+  // Tailles en pixels selon le paramètre `size`
+  const taille =
+    size === "sm" ? "w-2 h-2" : size === "lg" ? "w-3.5 h-3.5" : "w-2.5 h-2.5";
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {membresIds.map((id) => {
+        const m = membresAffichage.find((x) => x.id === id);
+        if (!m) return null;
+        return (
+          <div key={id} className="flex items-center gap-0.5">
+            {/* Pastille colorée */}
+            <span
+              style={{ backgroundColor: m.couleur }}
+              className={`${taille} rounded-full flex-shrink-0 inline-block`}
+              title={m.nom}
+            />
+            {/* Nom optionnel */}
+            {showNames && (
+              <span className="text-xs text-gray-500">{m.nom}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// COMPOSANT VUE MENSUELLE
+// ─────────────────────────────────────────────
+// Modification : evsDuJour appelle regrouperEvenements → plus de doublons
+// Les points colorés dans la grille = un point par participant (via AvatarsMembres)
+function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   const aujourd_hui = new Date();
   const [anneeAff, setAnneeAff] = useState(aujourd_hui.getFullYear());
   const [moisAff, setMoisAff] = useState(aujourd_hui.getMonth());
@@ -167,12 +241,15 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
   let decalage = premierJour.getDay();
   decalage = decalage === 0 ? 6 : decalage - 1;
 
+  // ★ Maintenant on regroupe avant de filtrer par jour
   function evsDuJour(numJour) {
     const mm = String(moisAff + 1).padStart(2, "0");
     const dd = String(numJour).padStart(2, "0");
     const dateStr = `${anneeAff}-${mm}-${dd}`;
-    return evenementsFiltres.filter((ev) => ev.date === dateStr);
+    const bruts = evenementsFiltres.filter((ev) => ev.date === dateStr);
+    return regrouperEvenements(bruts); // ← fusion des doublons
   }
+
   function estAujourdhui(numJour) {
     return (
       numJour === aujourd_hui.getDate() &&
@@ -240,9 +317,27 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
             return (
               <div key={`vide-${index}`} className="bg-white h-14 sm:h-16" />
             );
-          const evs = evsDuJour(numJour);
+          const evs = evsDuJour(numJour); // déjà regroupés
           const cEstAujourdhui = estAujourdhui(numJour);
           const estSelectionne = jourOuvert === numJour;
+
+          // LOGIQUE DES POINTS dans la grille :
+          // → Vue Famille : 1 point gris par événement (pas de doublons de couleurs)
+          // → Vue membre  : points colorés de chaque participant (comportement actuel)
+          const COULEUR_FAMILLE = "#4A4E69";
+          const pointsAAfficher =
+            membreActif === "famille"
+              ? // un point par événement (= evs.length points), tous de la même couleur gris
+                evs.map(() => COULEUR_FAMILLE)
+              : // un point par participant unique
+                [
+                  ...new Set(evs.flatMap((ev) => ev.membres || [ev.membre])),
+                ].map(
+                  (id) =>
+                    membresAffichage.find((m) => m.id === id)?.couleur ||
+                    "#ccc",
+                );
+
           return (
             <button
               key={numJour}
@@ -250,6 +345,7 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
               className={`bg-white h-14 sm:h-16 flex flex-col items-center pt-1.5 px-0.5 transition-colors
                 ${estSelectionne ? "bg-indigo-50 ring-2 ring-inset ring-indigo-300" : "hover:bg-gray-50"}`}
             >
+              {/* Numéro du jour */}
               <span
                 className={`w-7 h-7 flex items-center justify-center rounded-full text-sm mb-0.5 transition-colors
                 ${
@@ -262,22 +358,22 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
               >
                 {numJour}
               </span>
-              {evs.length > 0 && (
+              {/* Points colorés : 1 par événement (famille) ou 1 par participant (membre) */}
+              {pointsAAfficher.length > 0 && (
                 <div className="flex gap-0.5 flex-wrap justify-center">
-                  {evs.slice(0, 3).map((ev, i) => (
+                  {pointsAAfficher.slice(0, 4).map((couleur, i) => (
                     <span
                       key={i}
-                      style={{ backgroundColor: couleurMembre(ev.membre) }}
+                      style={{ backgroundColor: couleur }}
                       className="w-1.5 h-1.5 rounded-full block"
-                      title={ev.titre}
                     />
                   ))}
-                  {evs.length > 3 && (
+                  {pointsAAfficher.length > 4 && (
                     <span
                       className="text-gray-400 leading-none"
                       style={{ fontSize: "8px" }}
                     >
-                      +{evs.length - 3}
+                      +{pointsAAfficher.length - 4}
                     </span>
                   )}
                 </div>
@@ -287,7 +383,7 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         })}
       </div>
 
-      {/* Panneau détail jour */}
+      {/* Panneau détail jour — événements regroupés */}
       {jourOuvert && (
         <div className="mt-3 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
@@ -304,7 +400,6 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
             <button
               onClick={() => setJourOuvert(null)}
               className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-              aria-label="Fermer"
             >
               ×
             </button>
@@ -315,31 +410,75 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
             </p>
           ) : (
             <ul className="divide-y divide-gray-50">
-              {evsJourOuvert.map((ev) => (
-                <li
-                  key={ev.id}
-                  onClick={() => onOuvrirDetail(ev)}
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                >
-                  <span
-                    style={{ backgroundColor: couleurMembre(ev.membre) }}
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-gray-800 text-sm truncate">
-                      {ev.titre}
-                    </p>
-                    <p className="text-xs text-gray-400 truncate">
-                      {ev.heureDebut &&
-                        `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `}
-                      {membresAffichage.find((m) => m.id === ev.membre)?.nom ||
-                        "Famille"}
-                      {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                    </p>
-                  </div>
-                  <span className="text-gray-300 text-sm flex-shrink-0">›</span>
-                </li>
-              ))}
+              {evsJourOuvert.map((ev, i) => {
+                const estFamille = membreActif === "famille";
+                return estFamille ? (
+                  <li
+                    key={i}
+                    onClick={() => onOuvrirDetail(ev)}
+                    className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: "#4A4E69" }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-800 text-sm truncate mb-0.5">
+                        {ev.titre}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate mb-1.5">
+                        {ev.heureDebut && ev.heureDebut !== "00:00"
+                          ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
+                          : ""}
+                        {(ev.membres || [ev.membre])
+                          .map(
+                            (id) =>
+                              membresAffichage.find((m) => m.id === id)?.nom ||
+                              id,
+                          )
+                          .join(", ")}
+                        {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                      </p>
+                      <AvatarsMembres
+                        membresIds={ev.membres || [ev.membre]}
+                        size="sm"
+                      />
+                    </div>
+                  </li>
+                ) : (
+                  <li
+                    key={i}
+                    onClick={() => onOuvrirDetail(ev)}
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <AvatarsMembres
+                      membresIds={ev.membres || [ev.membre]}
+                      size="lg"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-gray-800 text-sm truncate">
+                        {ev.titre}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {ev.heureDebut && ev.heureDebut !== "00:00"
+                          ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
+                          : ""}
+                        {(ev.membres || [ev.membre])
+                          .map(
+                            (id) =>
+                              membresAffichage.find((m) => m.id === id)?.nom ||
+                              id,
+                          )
+                          .join(", ")}
+                        {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                      </p>
+                    </div>
+                    <span className="text-gray-300 text-sm flex-shrink-0">
+                      ›
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -349,36 +488,27 @@ function VueMensuelle({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
 }
 
 // ─────────────────────────────────────────────
-// NOUVEAU : COMPOSANT VUE SEMAINE
+// COMPOSANT VUE SEMAINE
 // ─────────────────────────────────────────────
-// Comment ça marche :
-//   On calcule le lundi de la semaine en cours.
-//   Un tableau de 7 dates (lun → dim) est affiché en colonnes.
-//   La navigation ← → déplace ce lundi de ±7 jours.
-//   Chaque événement s'affiche dans la colonne de son jour.
-function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
+// Modification : evsDuJour regroupe les événements
+// Chaque pastille affiche le titre + les avatars des participants
+function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   const aujourd_hui = new Date();
-  aujourd_hui.setHours(0, 0, 0, 0); // minuit pour comparaisons fiables
+  aujourd_hui.setHours(0, 0, 0, 0);
 
-  // Calcule le lundi de la semaine de `date`
-  // getDay() : 0=dim, 1=lun … on veut reculer jusqu'au lundi
   function getLundiDeLaSemaine(date) {
     const d = new Date(date);
-    const jour = d.getDay(); // 0=dim, 1=lun, …, 6=sam
-    // Si dimanche (0), on recule de 6 jours ; sinon de (jour - 1) jours
+    const jour = d.getDay();
     const diff = jour === 0 ? -6 : 1 - jour;
     d.setDate(d.getDate() + diff);
     d.setHours(0, 0, 0, 0);
     return d;
   }
 
-  // lundiRef = le lundi de la semaine affichée
-  // useState avec une fonction initiale : exécutée une seule fois au montage
   const [lundiRef, setLundiRef] = useState(() =>
     getLundiDeLaSemaine(new Date()),
   );
 
-  // Navigue à la semaine précédente : lundi - 7 jours
   function semainePrec() {
     setLundiRef((d) => {
       const n = new Date(d);
@@ -386,8 +516,6 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
       return n;
     });
   }
-
-  // Navigue à la semaine suivante : lundi + 7 jours
   function semaineSuiv() {
     setLundiRef((d) => {
       const n = new Date(d);
@@ -395,45 +523,37 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
       return n;
     });
   }
-
-  // Revient à la semaine contenant aujourd'hui
   function allerAujourdhui() {
     setLundiRef(getLundiDeLaSemaine(new Date()));
   }
 
-  // Construit un tableau de 7 dates : [lundi, mardi, …, dimanche]
-  // Array.from({length:7}, (_,i) => ...) = crée 7 éléments, i va de 0 à 6
   const joursDeLaSemaine = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(lundiRef);
-    d.setDate(lundiRef.getDate() + i); // lundi+0, lundi+1, …, lundi+6
+    d.setDate(lundiRef.getDate() + i);
     return d;
   });
 
-  // Récupère les événements d'une date précise (objet Date)
+  // ★ Regroupe les événements d'une journée
   function evsDuJour(date) {
-    // On formate la date en "YYYY-MM-DD" pour correspondre au format Firebase
     const mm = String(date.getMonth() + 1).padStart(2, "0");
     const dd = String(date.getDate()).padStart(2, "0");
     const dateStr = `${date.getFullYear()}-${mm}-${dd}`;
-    return evenementsFiltres.filter((ev) => ev.date === dateStr);
+    const bruts = evenementsFiltres.filter((ev) => ev.date === dateStr);
+    return regrouperEvenements(bruts); // ← fusion
   }
 
-  // Est-ce que la date correspond à aujourd'hui ?
   function estAujourdhui(date) {
     return date.getTime() === aujourd_hui.getTime();
   }
 
-  // Est-ce que la semaine affichée EST la semaine en cours ?
   const semaineCourante = getLundiDeLaSemaine(new Date());
   const estSemaineCourante = lundiRef.getTime() === semaineCourante.getTime();
 
-  // Libellé de la période affichée, ex : "17 – 23 mars 2025"
-  const dimanche = joursDeLaSemaine[6];
   const labelDebut = joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "short",
   });
-  const labelFin = dimanche.toLocaleDateString("fr-FR", {
+  const labelFin = joursDeLaSemaine[6].toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -442,7 +562,7 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
 
   return (
     <div>
-      {/* ── Navigation semaine ── */}
+      {/* Navigation semaine */}
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={semainePrec}
@@ -451,12 +571,10 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         >
           ‹
         </button>
-
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold text-gray-700">
             {labelPeriode}
           </span>
-          {/* Bouton "Aujourd'hui" uniquement si on n'est pas sur la semaine courante */}
           {!estSemaineCourante && (
             <button
               onClick={allerAujourdhui}
@@ -466,7 +584,6 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
             </button>
           )}
         </div>
-
         <button
           onClick={semaineSuiv}
           className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
@@ -476,37 +593,25 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         </button>
       </div>
 
-      {/* ── Grille des 7 jours ──
-          7 colonnes de largeur égale
-          Chaque colonne = en-tête (nom + numéro) + liste d'événements */}
+      {/* Grille 7 colonnes */}
       <div className="grid grid-cols-7 gap-1.5">
         {joursDeLaSemaine.map((date, i) => {
-          const evs = evsDuJour(date);
+          const evs = evsDuJour(date); // déjà regroupés
           const cEstAujourdhui = estAujourdhui(date);
 
           return (
             <div key={i} className="flex flex-col">
-              {/* ── En-tête de la colonne ──
-                  Fond indigo + texte blanc si c'est aujourd'hui, gris sinon */}
+              {/* En-tête colonne */}
               <div
-                className={`
-                rounded-xl py-2 px-1 text-center mb-1.5
-                ${
-                  cEstAujourdhui
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-50 text-gray-600"
-                }
-              `}
+                className={`rounded-xl py-2 px-1 text-center mb-1.5
+                ${cEstAujourdhui ? "bg-indigo-600 text-white" : "bg-gray-50 text-gray-600"}`}
               >
-                {/* Nom court du jour : "Lun", "Mar"… */}
                 <div className="text-xs font-bold uppercase tracking-wide">
                   {JOURS_SEMAINE[i]}
                 </div>
-                {/* Numéro du jour : "22", "23"… */}
                 <div className="text-lg font-bold leading-tight">
                   {date.getDate()}
                 </div>
-                {/* Mois en petit si c'est le 1er du mois — utile pour repérer les changements de mois */}
                 {date.getDate() === 1 && (
                   <div className="text-xs opacity-75">
                     {MOIS_FR[date.getMonth()].slice(0, 3)}
@@ -514,40 +619,63 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
                 )}
               </div>
 
-              {/* ── Événements de la journée ──
-                  Pastilles colorées avec le titre tronqué
-                  Clic → modal de détail */}
+              {/* Événements regroupés */}
               <div className="flex flex-col gap-1 min-h-[3rem]">
                 {evs.length === 0 ? (
-                  // Ligne vide subtile pour garder la hauteur de la colonne
                   <div className="h-1" />
                 ) : (
-                  evs.map((ev) => (
-                    <button
-                      key={ev.id}
-                      onClick={() => onOuvrirDetail(ev)}
-                      style={{ backgroundColor: couleurMembre(ev.membre) }}
-                      className="w-full text-left rounded-lg px-1.5 py-1 transition-opacity hover:opacity-80 active:opacity-60"
-                      title={ev.titre}
-                    >
-                      {/* Heure si disponible */}
-                      {ev.heureDebut && ev.heureDebut !== "00:00" && (
-                        <div
-                          className="text-gray-600 font-bold leading-none mb-0.5"
-                          style={{ fontSize: "9px" }}
-                        >
-                          {ev.heureDebut}
-                        </div>
-                      )}
-                      {/* Titre tronqué — text-xs sur mobile, un peu plus grand sur desktop */}
-                      <div
-                        className="text-gray-800 font-bold leading-tight truncate"
-                        style={{ fontSize: "10px" }}
+                  evs.map((ev, j) => {
+                    const COULEUR_BANDE = "#4A4E69";
+                    const premierMembre = (ev.membres || [ev.membre])[0];
+                    const couleurFond =
+                      membreActif === "famille"
+                        ? null
+                        : membresAffichage.find((m) => m.id === premierMembre)
+                            ?.couleur || "#e5e7eb";
+                    const stylePastille =
+                      membreActif === "famille"
+                        ? {
+                            backgroundColor: "#ffffff",
+                            borderLeft: "3px solid " + COULEUR_BANDE,
+                            paddingLeft: "6px",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+                          }
+                        : { backgroundColor: couleurFond };
+
+                    return (
+                      <button
+                        key={j}
+                        onClick={() => onOuvrirDetail(ev)}
+                        style={stylePastille}
+                        className="w-full text-left rounded-lg px-1.5 py-1 transition-opacity hover:opacity-80 active:opacity-60"
+                        title={`${ev.titre} — ${(ev.membres || [ev.membre]).map((id) => membresAffichage.find((m) => m.id === id)?.nom).join(", ")}`}
                       >
-                        {ev.titre}
-                      </div>
-                    </button>
-                  ))
+                        {/* Heure */}
+                        {ev.heureDebut && ev.heureDebut !== "00:00" && (
+                          <div
+                            className="text-gray-600 font-bold leading-none mb-0.5"
+                            style={{ fontSize: "9px" }}
+                          >
+                            {ev.heureDebut}
+                          </div>
+                        )}
+                        {/* Titre */}
+                        <div
+                          className="text-gray-800 font-bold leading-tight truncate"
+                          style={{ fontSize: "10px" }}
+                        >
+                          {ev.titre}
+                        </div>
+                        {/* ★ Pastilles des participants sous le titre */}
+                        {(ev.membres || [ev.membre]).length > 1 && (
+                          <AvatarsMembres
+                            membresIds={ev.membres || [ev.membre]}
+                            size="sm"
+                          />
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -555,7 +683,6 @@ function VueSemaine({ evenementsFiltres, couleurMembre, onOuvrirDetail }) {
         })}
       </div>
 
-      {/* ── Message si aucun événement cette semaine ── */}
       {joursDeLaSemaine.every((d) => evsDuJour(d).length === 0) && (
         <div className="text-center text-gray-400 py-6 text-sm mt-2">
           Aucun événement cette semaine
@@ -573,11 +700,8 @@ function Calendrier({ membreActif }) {
   const [afficherFormulaire, setAfficherFormulaire] = useState(false);
   const [chargement, setChargement] = useState(true);
   const [evenementDetail, setEvenementDetail] = useState(null);
-
-  // "liste" | "semaine" | "mois"
   const [vue, setVue] = useState("liste");
 
-  // États du formulaire (inchangés)
   const [titre, setTitre] = useState("");
   const [date, setDate] = useState("");
   const [heureDebut, setHeureDebut] = useState("");
@@ -589,7 +713,6 @@ function Calendrier({ membreActif }) {
   const [lieuType, setLieuType] = useState("texte");
   const [description, setDescription] = useState("");
 
-  // Chargement Firebase (inchangé)
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "evenements"), (snapshot) => {
       const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -656,12 +779,18 @@ function Calendrier({ membreActif }) {
     reinitialiserFormulaire();
   };
 
+  // ★ Suppression mise à jour : supprimer tous les ids du groupe
   const supprimerEvenement = async (evenement) => {
+    // evenement.ids = tableau des ids Firebase du groupe
+    // evenement.serieId = id de la série (récurrence)
+    const idsASupprimer = evenement.ids || [evenement.id];
+
     if (evenement.serieId) {
       const choix = window.confirm(
         "Supprimer toute la série ou seulement cet événement ?\n\nOK = toute la série\nAnnuler = cet événement uniquement",
       );
       if (choix) {
+        // Supprime TOUS les docs de la série
         const q = query(
           collection(db, "evenements"),
           where("serieId", "==", evenement.serieId),
@@ -671,18 +800,20 @@ function Calendrier({ membreActif }) {
         snapshot.docs.forEach((d) => batch.delete(d.ref));
         await batch.commit();
       } else {
-        await deleteDoc(doc(db, "evenements", evenement.id));
+        // Supprime seulement les docs de cet événement groupé (tous les membres)
+        const batch = writeBatch(db);
+        idsASupprimer.forEach((id) => batch.delete(doc(db, "evenements", id)));
+        await batch.commit();
       }
     } else {
-      await deleteDoc(doc(db, "evenements", evenement.id));
+      // Pas de récurrence : supprime les docs de tous les membres du groupe
+      const batch = writeBatch(db);
+      idsASupprimer.forEach((id) => batch.delete(doc(db, "evenements", id)));
+      await batch.commit();
     }
     setEvenementDetail(null);
   };
 
-  const couleurMembre = (id) =>
-    membresAffichage.find((m) => m.id === id)?.couleur || "#f2e8df";
-  const nomMembre = (id) =>
-    membresAffichage.find((m) => m.id === id)?.nom || "Famille";
   const formatDate = (dateStr) =>
     parseDateLocale(dateStr).toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -697,24 +828,20 @@ function Calendrier({ membreActif }) {
           (e) => e.membre === membreActif || e.membre === "famille",
         );
 
+  // ★ Vue liste : on regroupe par date PUIS on fusionne les doublons
   const evenementsParDate = evenementsFiltres.reduce((acc, ev) => {
     if (!acc[ev.date]) acc[ev.date] = [];
-    const dejaDans = acc[ev.date].some(
-      (e) =>
-        e.titre === ev.titre &&
-        e.heureDebut === ev.heureDebut &&
-        e.serieId === ev.serieId,
-    );
-    if (!dejaDans) acc[ev.date].push(ev);
+    acc[ev.date].push(ev);
     return acc;
   }, {});
+  // On applique regrouperEvenements sur chaque groupe de date
+  Object.keys(evenementsParDate).forEach((date) => {
+    evenementsParDate[date] = regrouperEvenements(evenementsParDate[date]);
+  });
 
-  // ─────────────────────────────────────────────
-  // RENDU
-  // ─────────────────────────────────────────────
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      {/* ── En-tête (inchangé) ── */}
+      {/* En-tête */}
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-bold text-gray-800">📅 Calendrier</h2>
         <button
@@ -725,9 +852,7 @@ function Calendrier({ membreActif }) {
         </button>
       </div>
 
-      {/* ── Sélecteur 3 vues : Liste | Semaine | Mois ──
-          Principe : fond gris global, bouton actif = blanc avec ombre
-          flex-1 = chaque bouton prend la même largeur */}
+      {/* Sélecteur 3 vues */}
       <div className="flex bg-gray-100 rounded-xl p-1 gap-1 mb-5">
         {[
           { id: "liste", label: "📋 Liste" },
@@ -737,21 +862,15 @@ function Calendrier({ membreActif }) {
           <button
             key={id}
             onClick={() => setVue(id)}
-            className={`
-              flex-1 py-2 rounded-lg text-sm font-bold transition-all
-              ${
-                vue === id
-                  ? "bg-white shadow text-indigo-600"
-                  : "text-gray-500 hover:text-gray-700"
-              }
-            `}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all
+              ${vue === id ? "bg-white shadow text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}
           >
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── Formulaire d'ajout (inchangé) ── */}
+      {/* Formulaire d'ajout (inchangé) */}
       {afficherFormulaire && (
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
           <h3 className="text-sm font-bold text-gray-600 mb-4">
@@ -860,7 +979,6 @@ function Calendrier({ membreActif }) {
                 ))}
               </div>
             </div>
-            {/* Lieu */}
             <div>
               <label className="text-xs font-bold text-gray-400 mb-2 block">
                 Lieu
@@ -955,36 +1073,70 @@ function Calendrier({ membreActif }) {
         </div>
       )}
 
-      {/* ── Modal de détail (inchangé) ── */}
+      {/* ★ Modal de détail — adapté pour les événements groupés */}
       {evenementDetail && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-96 shadow-xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-10 h-10 rounded-full flex-shrink-0"
-                style={{
-                  backgroundColor: couleurMembre(evenementDetail.membre),
-                }}
-              />
-              <div>
-                <h3 className="font-bold text-gray-800">
-                  {evenementDetail.titre}
-                </h3>
-                <p className="text-gray-400 text-xs">
-                  {nomMembre(evenementDetail.membre)}
-                </p>
+            {membreActif === "famille" ? (
+              <div className="flex items-start gap-3 mb-4">
+                <div
+                  className="w-4 h-4 rounded-full flex-shrink-0 mt-1"
+                  style={{ backgroundColor: "#4A4E69" }}
+                />
+                <div className="flex-1">
+                  <h3 className="font-bold text-gray-800">
+                    {evenementDetail.titre}
+                  </h3>
+                  <p className="text-gray-500 text-xs mt-0.5 mb-1.5">
+                    {(evenementDetail.membres || [evenementDetail.membre])
+                      .map(
+                        (id) =>
+                          membresAffichage.find((m) => m.id === id)?.nom || id,
+                      )
+                      .join(", ")}
+                  </p>
+                  <AvatarsMembres
+                    membresIds={
+                      evenementDetail.membres || [evenementDetail.membre]
+                    }
+                    size="md"
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-3 mb-4">
+                <AvatarsMembres
+                  membresIds={
+                    evenementDetail.membres || [evenementDetail.membre]
+                  }
+                  size="lg"
+                />
+                <div className="flex-1">
+                  <h3 className="font-bold text-gray-800">
+                    {evenementDetail.titre}
+                  </h3>
+                  <p className="text-gray-500 text-xs mt-0.5">
+                    {(evenementDetail.membres || [evenementDetail.membre])
+                      .map(
+                        (id) =>
+                          membresAffichage.find((m) => m.id === id)?.nom || id,
+                      )
+                      .join(", ")}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col gap-2 text-sm text-gray-600 mb-4">
               <p>📅 {formatDate(evenementDetail.date)}</p>
-              {evenementDetail.heureDebut && (
-                <p>
-                  🕐 {evenementDetail.heureDebut}
-                  {evenementDetail.heureFin
-                    ? ` → ${evenementDetail.heureFin}`
-                    : ""}
-                </p>
-              )}
+              {evenementDetail.heureDebut &&
+                evenementDetail.heureDebut !== "00:00" && (
+                  <p>
+                    🕐 {evenementDetail.heureDebut}
+                    {evenementDetail.heureFin
+                      ? ` → ${evenementDetail.heureFin}`
+                      : ""}
+                  </p>
+                )}
               {evenementDetail.lieu && evenementDetail.lieuType === "maps" && (
                 <button
                   type="button"
@@ -1042,62 +1194,107 @@ function Calendrier({ membreActif }) {
         <div className="text-center text-gray-400 py-8">Chargement...</div>
       )}
 
-      {/* ── Vue SEMAINE (nouvelle) ── */}
+      {/* Vue SEMAINE */}
       {!chargement && vue === "semaine" && (
         <VueSemaine
           evenementsFiltres={evenementsFiltres}
-          couleurMembre={couleurMembre}
           onOuvrirDetail={setEvenementDetail}
+          membreActif={membreActif}
         />
       )}
 
-      {/* ── Vue MOIS (session précédente) ── */}
+      {/* Vue MOIS */}
       {!chargement && vue === "mois" && (
         <VueMensuelle
           evenementsFiltres={evenementsFiltres}
-          couleurMembre={couleurMembre}
           onOuvrirDetail={setEvenementDetail}
+          membreActif={membreActif}
         />
       )}
 
-      {/* ── Vue LISTE (originale, inchangée) ── */}
+      {/* ★ Vue LISTE — avec regroupement */}
       {!chargement && vue === "liste" && (
         <>
           {Object.keys(evenementsParDate)
             .sort()
             .map((dateStr) => (
               <div key={dateStr} className="mb-4">
-                <p className="text-xs font-bold text-gray-400 uppercase mb-2 capitalize">
+                <p className="text-xs font-bold text-gray-400 capitalize mb-2">
                   {formatDate(dateStr)}
                 </p>
                 <div className="flex flex-col gap-2">
-                  {evenementsParDate[dateStr].map((ev) => (
-                    <div
-                      key={ev.id}
-                      onClick={() => setEvenementDetail(ev)}
-                      className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all"
-                    >
+                  {evenementsParDate[dateStr].map((ev, i) => {
+                    const estFamille = membreActif === "famille";
+                    return estFamille ? (
                       <div
-                        className="w-10 h-10 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: couleurMembre(ev.membre) }}
-                      />
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800 text-sm">
-                          {ev.titre}
-                        </p>
-                        <p className="text-gray-400 text-xs">
-                          {ev.heureDebut || ev.heure}
-                          {ev.heureFin ? ` → ${ev.heureFin}` : ""}
-                          {" · "}
-                          {nomMembre(ev.membre)}
-                          {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                          {ev.recurrence && ev.recurrence !== "aucune"
-                            ? " · 🔁"
-                            : ""}
-                        </p>
+                        key={i}
+                        onClick={() => setEvenementDetail(ev)}
+                        className="bg-white rounded-2xl shadow-sm p-4 flex items-start gap-3 cursor-pointer hover:shadow-md transition-all"
+                      >
+                        <div
+                          className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5"
+                          style={{ backgroundColor: "#4A4E69" }}
+                        />
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-800 text-sm">
+                            {ev.titre}
+                          </p>
+                          <p className="text-gray-400 text-xs mb-1.5">
+                            {ev.heureDebut && ev.heureDebut !== "00:00"
+                              ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
+                              : ""}
+                            {(ev.membres || [ev.membre])
+                              .map(
+                                (id) =>
+                                  membresAffichage.find((m) => m.id === id)
+                                    ?.nom || id,
+                              )
+                              .join(", ")}
+                            {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                            {ev.recurrence && ev.recurrence !== "aucune"
+                              ? " · 🔁"
+                              : ""}
+                          </p>
+                          <AvatarsMembres
+                            membresIds={ev.membres || [ev.membre]}
+                            size="sm"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ) : (
+                      <div
+                        key={i}
+                        onClick={() => setEvenementDetail(ev)}
+                        className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all"
+                      >
+                        <AvatarsMembres
+                          membresIds={ev.membres || [ev.membre]}
+                          size="lg"
+                        />
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-800 text-sm">
+                            {ev.titre}
+                          </p>
+                          <p className="text-gray-400 text-xs">
+                            {ev.heureDebut && ev.heureDebut !== "00:00"
+                              ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
+                              : ""}
+                            {(ev.membres || [ev.membre])
+                              .map(
+                                (id) =>
+                                  membresAffichage.find((m) => m.id === id)
+                                    ?.nom || id,
+                              )
+                              .join(", ")}
+                            {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                            {ev.recurrence && ev.recurrence !== "aucune"
+                              ? " · 🔁"
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

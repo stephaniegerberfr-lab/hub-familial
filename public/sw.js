@@ -1,4 +1,4 @@
-const CACHE_NAME = "hub-familial-v1";
+const CACHE_NAME = "HOMY-v1";
 
 const urlsToCache = ["/", "/index.html"];
 

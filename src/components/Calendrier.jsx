@@ -111,7 +111,7 @@ function exporterIcal(evenement) {
   const contenu = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Hub Familial//FR",
+    "PRODID:-//HOMY//FR",
     "BEGIN:VEVENT",
     `DTSTART:${dateDebut}T${heureDebut}00`,
     `DTEND:${dateDebut}T${heureFin}00`,

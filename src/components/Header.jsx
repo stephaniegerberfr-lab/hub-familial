@@ -41,7 +41,7 @@ function Header() {
         <p className="text-slate-300 text-sm font-semibold capitalize">
           {date}
         </p>
-        <h1 className="text-2xl font-bold">Hub Familial 🏠</h1>
+        <h1 className="text-2xl font-bold">HOMY 🏠</h1>
       </div>
 
       {/* Centre — météo */}

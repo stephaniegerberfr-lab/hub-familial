@@ -16,11 +16,10 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// Google Auth Provider avec permission Calendar
+// Google Auth Provider avec permissions Calendar
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/calendar");
 googleProvider.addScope("https://www.googleapis.com/auth/calendar.events");
 googleProvider.setCustomParameters({
-  access_type: "offline", // permet d'avoir un refresh_token
-  prompt: "consent", // force l'affichage du consentement Google
+  prompt: "consent", // force l'affichage du consentement Google à chaque fois
 });

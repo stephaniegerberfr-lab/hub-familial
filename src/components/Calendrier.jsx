@@ -23,7 +23,7 @@ const membres = [
 ];
 
 const membresAffichage = [
-  { id: "famille", nom: "Famille", couleur: "#3D3D3D" },
+  { id: "famille", nom: "Famille", couleur: "#4A4E69" },
   ...membres,
 ];
 
@@ -33,6 +33,7 @@ const recurrences = [
   { id: "hebdomadaire", nom: "Hebdomadaire" },
   { id: "mensuel", nom: "Mensuel" },
   { id: "annuel", nom: "Annuel" },
+  { id: "personnalise", nom: "Personnalisée..." },
 ];
 
 const MOIS_FR = [
@@ -53,47 +54,295 @@ const MOIS_FR = [
 const JOURS_SEMAINE = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 // ─────────────────────────────────────────────
-// ★ NOUVELLE FONCTION CENTRALE : regrouperEvenements
+// ★ MODAL DE RÉCURRENCE PERSONNALISÉE
 // ─────────────────────────────────────────────
-// Problème résolu : un événement créé pour 5 membres génère 5 docs Firebase.
-// Cette fonction fusionne ces 5 docs en 1 seul objet avec membres = ["papa","maman",...]
-//
-// La "clé de regroupement" = titre + date + heureDebut + serieId
-// Si ces 4 valeurs sont identiques → c'est le MÊME événement → on fusionne.
-//
-// Résultat : chaque événement groupé a :
-//   - tous les champs du 1er document (titre, date, heure, lieu, etc.)
-//   - un champ `membres` = tableau ["papa", "maman", ...]
-//   - un champ `ids` = tableau des ids Firebase de chaque doc (pour la suppression)
+function ModalRecurrencePersonnalisee({ config, onSave, onClose }) {
+  // config contient : { type, intervalle, joursSelectiones, finType, dateFin, occurrences }
+  const [type, setType] = useState(config?.type || "semaine");
+  const [intervalle, setIntervalle] = useState(config?.intervalle || 1);
+  const [joursSelectiones, setJoursSelectiones] = useState(
+    config?.joursSelectiones || [1], // Lundi par défaut
+  );
+  const [finType, setFinType] = useState(config?.finType || "jamais");
+  const [dateFin, setDateFin] = useState(config?.dateFin || "");
+  const [occurrences, setOccurrences] = useState(config?.occurrences || 12);
+
+  const joursOptions = [
+    { id: 1, label: "L" },
+    { id: 2, label: "M" },
+    { id: 3, label: "M" },
+    { id: 4, label: "J" },
+    { id: 5, label: "V" },
+    { id: 6, label: "S" },
+    { id: 0, label: "D" },
+  ];
+
+  const toggleJour = (jour) => {
+    if (joursSelectiones.includes(jour)) {
+      // Empêcher de tout déselectionner
+      if (joursSelectiones.length > 1) {
+        setJoursSelectiones(joursSelectiones.filter((j) => j !== jour));
+      }
+    } else {
+      setJoursSelectiones([...joursSelectiones, jour].sort());
+    }
+  };
+
+  const handleSauvegarder = () => {
+    onSave({
+      type,
+      intervalle: parseInt(intervalle),
+      joursSelectiones: type === "semaine" ? joursSelectiones : [],
+      finType,
+      dateFin: finType === "le" ? dateFin : null,
+      occurrences: finType === "apres" ? parseInt(occurrences) : null,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">
+          🔁 Récurrence personnalisée
+        </h3>
+
+        {/* Type de récurrence */}
+        <div className="mb-4">
+          <label className="text-xs font-bold text-gray-600 mb-2 block">
+            Répéter tout(e) les
+          </label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              min="1"
+              max="999"
+              value={intervalle}
+              onChange={(e) => setIntervalle(e.target.value)}
+              className="w-20 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
+            />
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
+            >
+              <option value="jour">jour(s)</option>
+              <option value="semaine">semaine(s)</option>
+              <option value="mois">mois</option>
+              <option value="annee">année(s)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Sélection des jours (si hebdomadaire) */}
+        {type === "semaine" && (
+          <div className="mb-4">
+            <label className="text-xs font-bold text-gray-600 mb-2 block">
+              Répéter le
+            </label>
+            <div className="flex gap-2">
+              {joursOptions.map((jour) => (
+                <button
+                  key={jour.id}
+                  type="button"
+                  onClick={() => toggleJour(jour.id)}
+                  className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${
+                    joursSelectiones.includes(jour.id)
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  {jour.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Condition de fin */}
+        <div className="mb-6">
+          <label className="text-xs font-bold text-gray-600 mb-2 block">
+            Se termine
+          </label>
+
+          {/* Option : Jamais */}
+          <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <input
+              type="radio"
+              name="finType"
+              checked={finType === "jamais"}
+              onChange={() => setFinType("jamais")}
+              className="w-4 h-4"
+            />
+            <span className="text-sm text-gray-700">Jamais</span>
+          </label>
+
+          {/* Option : Le (date) */}
+          <label className="flex items-center gap-3 mb-3 cursor-pointer">
+            <input
+              type="radio"
+              name="finType"
+              checked={finType === "le"}
+              onChange={() => setFinType("le")}
+              className="w-4 h-4"
+            />
+            <span className="text-sm text-gray-700">Le</span>
+            <input
+              type="date"
+              value={dateFin}
+              onChange={(e) => {
+                setDateFin(e.target.value);
+                setFinType("le");
+              }}
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-400"
+            />
+          </label>
+
+          {/* Option : Après X occurrences */}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="finType"
+              checked={finType === "apres"}
+              onChange={() => setFinType("apres")}
+              className="w-4 h-4"
+            />
+            <span className="text-sm text-gray-700">Après</span>
+            <input
+              type="number"
+              min="1"
+              max="999"
+              value={occurrences}
+              onChange={(e) => {
+                setOccurrences(e.target.value);
+                setFinType("apres");
+              }}
+              className="w-20 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-400"
+            />
+            <span className="text-sm text-gray-700">occurrence(s)</span>
+          </label>
+        </div>
+
+        {/* Boutons */}
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 border border-gray-200 rounded-xl py-2 text-sm font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleSauvegarder}
+            className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700"
+          >
+            Terminé
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ★ NOUVELLE FONCTION : genererDatesRecurrencePersonnalisee
+// ─────────────────────────────────────────────
+function genererDatesRecurrencePersonnalisee(
+  dateDebut,
+  configRecurrence,
+  dateFin,
+) {
+  const dates = [];
+  const debut = new Date(dateDebut + "T00:00:00");
+  let current = new Date(debut);
+  const { type, intervalle, joursSelectiones, finType, occurrences } =
+    configRecurrence;
+
+  // Date de fin finale (si définie)
+  const finDate = dateFin ? new Date(dateFin + "T00:00:00") : null;
+
+  // Limite de sécurité
+  const maxOccurrences =
+    finType === "apres" ? occurrences : finType === "jamais" ? 365 : 999;
+  let count = 0;
+
+  // Toujours ajouter la date de début
+  dates.push(dateDebut);
+  count++;
+
+  while (count < maxOccurrences) {
+    // Incrémenter selon le type
+    if (type === "jour") {
+      current.setDate(current.getDate() + intervalle);
+    } else if (type === "semaine") {
+      // Pour les semaines, on doit gérer les jours de la semaine sélectionnés
+      if (joursSelectiones && joursSelectiones.length > 0) {
+        // Chercher le prochain jour correspondant
+        const jourActuel = current.getDay();
+        let joursTrouve = false;
+
+        for (let i = 1; i <= 7; i++) {
+          const testDate = new Date(current);
+          testDate.setDate(current.getDate() + i);
+          const testJour = testDate.getDay();
+
+          if (joursSelectiones.includes(testJour)) {
+            current = testDate;
+            joursTrouve = true;
+            break;
+          }
+        }
+
+        // Si on n'a pas trouvé de jour cette semaine, passer à la semaine suivante
+        if (!joursTrouve) {
+          current.setDate(current.getDate() + 7 * intervalle);
+        }
+      } else {
+        current.setDate(current.getDate() + 7 * intervalle);
+      }
+    } else if (type === "mois") {
+      current.setMonth(current.getMonth() + intervalle);
+    } else if (type === "annee") {
+      current.setFullYear(current.getFullYear() + intervalle);
+    }
+
+    // Vérifier la date de fin
+    if (finDate && current > finDate) break;
+
+    // Ajouter la date
+    const dateStr = current.toISOString().split("T")[0];
+    dates.push(dateStr);
+    count++;
+
+    // Sécurité : empêcher boucle infinie
+    if (count > 1000) break;
+  }
+
+  return dates;
+}
+
+// ─────────────────────────────────────────────
+// ★ FONCTION CENTRALE : regrouperEvenements
+// ─────────────────────────────────────────────
 function regrouperEvenements(liste) {
-  // On utilise un Map (dictionnaire) : clé → événement groupé
-  // Map préserve l'ordre d'insertion, contrairement à un objet {}
   const map = new Map();
 
   for (const ev of liste) {
-    // Construit la clé : on remplace les caractères qui pourraient poser problème
-    // serieId peut être null → on utilise "" dans ce cas
     const cle = `${ev.titre}__${ev.date}__${ev.heureDebut || ""}__${ev.serieId || ""}`;
 
     if (map.has(cle)) {
-      // Cet événement existe déjà dans le Map → on ajoute juste le membre
       const existant = map.get(cle);
-      // On évite les doublons de membres (sécurité)
       if (!existant.membres.includes(ev.membre)) {
         existant.membres.push(ev.membre);
         existant.ids.push(ev.id);
       }
     } else {
-      // Nouvel événement → on crée l'entrée avec un tableau membres à 1 élément
       map.set(cle, {
-        ...ev, // copie tous les champs (titre, date, lieu, etc.)
-        membres: [ev.membre], // tableau des participants — commence avec le 1er
-        ids: [ev.id], // tableau des ids Firebase — pour la suppression
+        ...ev,
+        membres: [ev.membre],
+        ids: [ev.id],
       });
     }
   }
 
-  // Map.values() retourne un itérateur → on le convertit en tableau
   return Array.from(map.values());
 }
 
@@ -164,9 +413,7 @@ function urlMaps(adresse) {
 function formatDate(dateStr) {
   if (!dateStr) return "Date non disponible";
 
-  // Gère les deux formats de Google Calendar
   try {
-    // Si c'est une date ISO complète avec heure (dateTime)
     if (dateStr.includes("T")) {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return "Date invalide";
@@ -179,7 +426,6 @@ function formatDate(dateStr) {
       });
     }
 
-    // Si c'est une date simple YYYY-MM-DD (événement toute la journée)
     const [annee, mois, jour] = dateStr.split("-");
     const date = new Date(annee, parseInt(mois) - 1, jour);
 
@@ -202,517 +448,307 @@ function parseDateLocale(dateStr) {
 }
 
 // ─────────────────────────────────────────────
-// ★ NOUVEAU COMPOSANT : AvatarsMembres
+// ★ COMPOSANT : AvatarsMembres
 // ─────────────────────────────────────────────
-// Affiche une rangée de petits cercles colorés, un par participant.
-// Utilisé dans toutes les vues (liste, semaine, mois) et dans le modal.
-// Props :
-//   membresIds  : tableau d'ids ex: ["papa", "maman", "camille"]
-//   size        : "sm" (6px) | "md" (8px) | "lg" (10px)
-//   showNames   : true → affiche les noms en texte à côté des pastilles
 function AvatarsMembres({ membresIds = [], size = "md", showNames = false }) {
   if (!membresIds || membresIds.length === 0) return null;
 
-  // Tailles en pixels selon le paramètre `size`
   const taille =
     size === "sm" ? "w-2 h-2" : size === "lg" ? "w-3.5 h-3.5" : "w-2.5 h-2.5";
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {membresIds.map((id) => {
-        const m = membresAffichage.find((x) => x.id === id);
-        if (!m) return null;
+    <div className="flex items-center gap-1.5">
+      {membresIds.map((membreId) => {
+        const membre = membresAffichage.find((m) => m.id === membreId);
+        if (!membre) return null;
         return (
-          <div key={id} className="flex items-center gap-0.5">
-            {/* Pastille colorée */}
-            <span
-              style={{ backgroundColor: m.couleur }}
-              className={`${taille} rounded-full flex-shrink-0 inline-block`}
-              title={m.nom}
-            />
-            {/* Nom optionnel */}
-            {showNames && (
-              <span className="text-xs text-gray-500">{m.nom}</span>
-            )}
-          </div>
+          <div
+            key={membreId}
+            className={`${taille} rounded-full flex-shrink-0`}
+            style={{ backgroundColor: membre.couleur }}
+            title={membre.nom}
+          />
         );
       })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// COMPOSANT VUE MENSUELLE
-// ─────────────────────────────────────────────
-// Modification : evsDuJour appelle regrouperEvenements → plus de doublons
-// Les points colorés dans la grille = un point par participant (via AvatarsMembres)
-function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
-  const aujourd_hui = new Date();
-  const [anneeAff, setAnneeAff] = useState(aujourd_hui.getFullYear());
-  const [moisAff, setMoisAff] = useState(aujourd_hui.getMonth());
-  const [jourOuvert, setJourOuvert] = useState(null);
-
-  function allerMoisPrecedent() {
-    if (moisAff === 0) {
-      setMoisAff(11);
-      setAnneeAff((a) => a - 1);
-    } else setMoisAff((m) => m - 1);
-    setJourOuvert(null);
-  }
-  function allerMoisSuivant() {
-    if (moisAff === 11) {
-      setMoisAff(0);
-      setAnneeAff((a) => a + 1);
-    } else setMoisAff((m) => m + 1);
-    setJourOuvert(null);
-  }
-  function allerAujourdhui() {
-    setAnneeAff(aujourd_hui.getFullYear());
-    setMoisAff(aujourd_hui.getMonth());
-    setJourOuvert(null);
-  }
-
-  const premierJour = new Date(anneeAff, moisAff, 1);
-  const nombreJours = new Date(anneeAff, moisAff + 1, 0).getDate();
-  let decalage = premierJour.getDay();
-  decalage = decalage === 0 ? 6 : decalage - 1;
-
-  // ★ Maintenant on regroupe avant de filtrer par jour
-  function evsDuJour(numJour) {
-    const mm = String(moisAff + 1).padStart(2, "0");
-    const dd = String(numJour).padStart(2, "0");
-    const dateStr = `${anneeAff}-${mm}-${dd}`;
-    const bruts = evenementsFiltres.filter((ev) => ev.date === dateStr);
-    return regrouperEvenements(bruts); // ← fusion des doublons
-  }
-
-  function estAujourdhui(numJour) {
-    return (
-      numJour === aujourd_hui.getDate() &&
-      moisAff === aujourd_hui.getMonth() &&
-      anneeAff === aujourd_hui.getFullYear()
-    );
-  }
-
-  const cases = [
-    ...Array(decalage).fill(null),
-    ...Array.from({ length: nombreJours }, (_, i) => i + 1),
-  ];
-  const evsJourOuvert = jourOuvert ? evsDuJour(jourOuvert) : [];
-
-  return (
-    <div>
-      {/* Navigation mois */}
-      <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={allerMoisPrecedent}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
-          aria-label="Mois précédent"
-        >
-          ‹
-        </button>
-        <div className="flex items-center gap-3">
-          <h2 className="text-base font-bold text-gray-800">
-            {MOIS_FR[moisAff]} {anneeAff}
-          </h2>
-          {(anneeAff !== aujourd_hui.getFullYear() ||
-            moisAff !== aujourd_hui.getMonth()) && (
-            <button
-              onClick={allerAujourdhui}
-              className="text-xs text-indigo-600 font-bold border border-indigo-200 px-2 py-0.5 rounded-lg hover:bg-indigo-50 transition-colors"
-            >
-              Aujourd'hui
-            </button>
-          )}
-        </div>
-        <button
-          onClick={allerMoisSuivant}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
-          aria-label="Mois suivant"
-        >
-          ›
-        </button>
-      </div>
-
-      {/* En-tête jours */}
-      <div className="grid grid-cols-7 mb-1">
-        {JOURS_SEMAINE.map((j) => (
-          <div
-            key={j}
-            className="text-center text-xs font-bold text-gray-400 py-1"
-          >
-            {j}
-          </div>
-        ))}
-      </div>
-
-      {/* Grille */}
-      <div className="grid grid-cols-7 gap-px bg-gray-100 rounded-xl overflow-hidden border border-gray-100">
-        {cases.map((numJour, index) => {
-          if (numJour === null)
-            return (
-              <div key={`vide-${index}`} className="bg-white h-14 sm:h-16" />
-            );
-          const evs = evsDuJour(numJour); // déjà regroupés
-          const cEstAujourdhui = estAujourdhui(numJour);
-          const estSelectionne = jourOuvert === numJour;
-
-          // LOGIQUE DES POINTS dans la grille :
-          // → Vue Famille : 1 point gris par événement (pas de doublons de couleurs)
-          // → Vue membre  : points colorés de chaque participant (comportement actuel)
-          const COULEUR_FAMILLE = "#4A4E69";
-          const pointsAAfficher =
-            membreActif === "famille"
-              ? // un point par événement (= evs.length points), tous de la même couleur gris
-                evs.map(() => COULEUR_FAMILLE)
-              : // un point par participant unique
-                [
-                  ...new Set(evs.flatMap((ev) => ev.membres || [ev.membre])),
-                ].map(
-                  (id) =>
-                    membresAffichage.find((m) => m.id === id)?.couleur ||
-                    "#ccc",
-                );
-
-          return (
-            <button
-              key={numJour}
-              onClick={() => setJourOuvert(estSelectionne ? null : numJour)}
-              className={`bg-white h-14 sm:h-16 flex flex-col items-center pt-1.5 px-0.5 transition-colors
-                ${estSelectionne ? "bg-indigo-50 ring-2 ring-inset ring-indigo-300" : "hover:bg-gray-50"}`}
-            >
-              {/* Numéro du jour */}
-              <span
-                className={`w-7 h-7 flex items-center justify-center rounded-full text-sm mb-0.5 transition-colors
-                ${
-                  cEstAujourdhui
-                    ? "bg-indigo-600 text-white font-bold"
-                    : estSelectionne
-                      ? "text-indigo-700 font-bold"
-                      : "text-gray-700 font-medium"
-                }`}
-              >
-                {numJour}
-              </span>
-              {/* Points colorés : 1 par événement (famille) ou 1 par participant (membre) */}
-              {pointsAAfficher.length > 0 && (
-                <div className="flex gap-0.5 flex-wrap justify-center">
-                  {pointsAAfficher.slice(0, 4).map((couleur, i) => (
-                    <span
-                      key={i}
-                      style={{ backgroundColor: couleur }}
-                      className="w-1.5 h-1.5 rounded-full block"
-                    />
-                  ))}
-                  {pointsAAfficher.length > 4 && (
-                    <span
-                      className="text-gray-400 leading-none"
-                      style={{ fontSize: "8px" }}
-                    >
-                      +{pointsAAfficher.length - 4}
-                    </span>
-                  )}
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Panneau détail jour — événements regroupés */}
-      {jourOuvert && (
-        <div className="mt-3 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-bold text-gray-700 text-sm capitalize">
-              {new Date(anneeAff, moisAff, jourOuvert).toLocaleDateString(
-                "fr-FR",
-                {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                },
-              )}
-            </h3>
-            <button
-              onClick={() => setJourOuvert(null)}
-              className="text-gray-400 hover:text-gray-600 text-xl leading-none"
-            >
-              ×
-            </button>
-          </div>
-          {evsJourOuvert.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-gray-400 text-center">
-              Aucun événement ce jour
-            </p>
-          ) : (
-            <ul className="divide-y divide-gray-50">
-              {evsJourOuvert.map((ev, i) => {
-                const estFamille = membreActif === "famille";
-                return estFamille ? (
-                  <li
-                    key={i}
-                    onClick={() => onOuvrirDetail(ev)}
-                    className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    <div
-                      className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5"
-                      style={{ backgroundColor: "#4A4E69" }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-800 text-sm truncate mb-0.5">
-                        {ev.titre}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate mb-1.5">
-                        {ev.heureDebut && ev.heureDebut !== "00:00"
-                          ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
-                          : ""}
-                        {(ev.membres || [ev.membre])
-                          .map(
-                            (id) =>
-                              membresAffichage.find((m) => m.id === id)?.nom ||
-                              id,
-                          )
-                          .join(", ")}
-                        {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                      </p>
-                      <AvatarsMembres
-                        membresIds={ev.membres || [ev.membre]}
-                        size="sm"
-                      />
-                    </div>
-                  </li>
-                ) : (
-                  <li
-                    key={i}
-                    onClick={() => onOuvrirDetail(ev)}
-                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    <AvatarsMembres
-                      membresIds={ev.membres || [ev.membre]}
-                      size="lg"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-gray-800 text-sm truncate">
-                        {ev.titre}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">
-                        {ev.heureDebut && ev.heureDebut !== "00:00"
-                          ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
-                          : ""}
-                        {(ev.membres || [ev.membre])
-                          .map(
-                            (id) =>
-                              membresAffichage.find((m) => m.id === id)?.nom ||
-                              id,
-                          )
-                          .join(", ")}
-                        {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                      </p>
-                    </div>
-                    <span className="text-gray-300 text-sm flex-shrink-0">
-                      ›
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+      {showNames && (
+        <span className="text-xs text-gray-600 ml-1">
+          {membresIds
+            .map((id) => membresAffichage.find((m) => m.id === id)?.nom || id)
+            .join(", ")}
+        </span>
       )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// COMPOSANT VUE SEMAINE
+// ★ COMPOSANT : VueMensuelle
 // ─────────────────────────────────────────────
-// Modification : evsDuJour regroupe les événements
-// Chaque pastille affiche le titre + les avatars des participants
-function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
-  const aujourd_hui = new Date();
-  aujourd_hui.setHours(0, 0, 0, 0);
+function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
+  const aujourdhui = new Date();
+  const [moisAffiche, setMoisAffiche] = useState(aujourdhui.getMonth());
+  const [anneeAffichee, setAnneeAffichee] = useState(aujourdhui.getFullYear());
 
-  function getLundiDeLaSemaine(date) {
-    const d = new Date(date);
-    const jour = d.getDay();
-    const diff = jour === 0 ? -6 : 1 - jour;
-    d.setDate(d.getDate() + diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
+  const premiersJours = new Date(anneeAffichee, moisAffiche, 1);
+  const dernierJourMois = new Date(anneeAffichee, moisAffiche + 1, 0).getDate();
+  const premierJourSemaine = premiersJours.getDay();
+  const decalage = premierJourSemaine === 0 ? 6 : premierJourSemaine - 1;
+
+  const joursCalendrier = [];
+  for (let i = 0; i < decalage; i++) {
+    joursCalendrier.push(null);
+  }
+  for (let j = 1; j <= dernierJourMois; j++) {
+    joursCalendrier.push(j);
   }
 
-  const [lundiRef, setLundiRef] = useState(() =>
-    getLundiDeLaSemaine(new Date()),
-  );
+  const moisPrecedent = () => {
+    if (moisAffiche === 0) {
+      setMoisAffiche(11);
+      setAnneeAffichee(anneeAffichee - 1);
+    } else {
+      setMoisAffiche(moisAffiche - 1);
+    }
+  };
 
-  function semainePrec() {
-    setLundiRef((d) => {
-      const n = new Date(d);
-      n.setDate(n.getDate() - 7);
-      return n;
-    });
-  }
-  function semaineSuiv() {
-    setLundiRef((d) => {
-      const n = new Date(d);
-      n.setDate(n.getDate() + 7);
-      return n;
-    });
-  }
-  function allerAujourdhui() {
-    setLundiRef(getLundiDeLaSemaine(new Date()));
-  }
+  const moisSuivant = () => {
+    if (moisAffiche === 11) {
+      setMoisAffiche(0);
+      setAnneeAffichee(anneeAffichee + 1);
+    } else {
+      setMoisAffiche(moisAffiche + 1);
+    }
+  };
 
-  const joursDeLaSemaine = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(lundiRef);
-    d.setDate(lundiRef.getDate() + i);
-    return d;
-  });
+  const evsDuJour = (jour) => {
+    if (!jour) return [];
+    const dateStr = `${anneeAffichee}-${String(moisAffiche + 1).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
+    const evsJour = evenementsFiltres.filter((e) => e.date === dateStr);
+    return regrouperEvenements(evsJour);
+  };
 
-  // ★ Regroupe les événements d'une journée
-  function evsDuJour(date) {
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const dd = String(date.getDate()).padStart(2, "0");
-    const dateStr = `${date.getFullYear()}-${mm}-${dd}`;
-    const bruts = evenementsFiltres.filter((ev) => ev.date === dateStr);
-    return regrouperEvenements(bruts); // ← fusion
-  }
-
-  function estAujourdhui(date) {
-    return date.getTime() === aujourd_hui.getTime();
-  }
-
-  const semaineCourante = getLundiDeLaSemaine(new Date());
-  const estSemaineCourante = lundiRef.getTime() === semaineCourante.getTime();
-
-  const labelDebut = joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-  });
-  const labelFin = joursDeLaSemaine[6].toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const labelPeriode = `${labelDebut} – ${labelFin}`;
+  const estAujourdhui = (jour) => {
+    return (
+      jour === aujourdhui.getDate() &&
+      moisAffiche === aujourdhui.getMonth() &&
+      anneeAffichee === aujourdhui.getFullYear()
+    );
+  };
 
   return (
-    <div>
-      {/* Navigation semaine */}
+    <div className="bg-white rounded-2xl shadow-sm p-4 mb-4">
       <div className="flex items-center justify-between mb-4">
         <button
-          onClick={semainePrec}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
-          aria-label="Semaine précédente"
+          onClick={moisPrecedent}
+          className="text-gray-400 hover:text-gray-600 font-bold text-xl"
         >
           ‹
         </button>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-gray-700">
-            {labelPeriode}
-          </span>
-          {!estSemaineCourante && (
-            <button
-              onClick={allerAujourdhui}
-              className="text-xs text-indigo-600 font-bold border border-indigo-200 px-2 py-0.5 rounded-lg hover:bg-indigo-50 transition-colors"
-            >
-              Aujourd'hui
-            </button>
-          )}
-        </div>
+        <h3 className="text-lg font-bold text-gray-800">
+          {MOIS_FR[moisAffiche]} {anneeAffichee}
+        </h3>
         <button
-          onClick={semaineSuiv}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors font-bold text-xl"
-          aria-label="Semaine suivante"
+          onClick={moisSuivant}
+          className="text-gray-400 hover:text-gray-600 font-bold text-xl"
         >
           ›
         </button>
       </div>
 
-      {/* Grille 7 colonnes */}
-      <div className="grid grid-cols-7 gap-1.5">
-        {joursDeLaSemaine.map((date, i) => {
-          const evs = evsDuJour(date); // déjà regroupés
-          const cEstAujourdhui = estAujourdhui(date);
+      <div className="grid grid-cols-7 gap-1">
+        {JOURS_SEMAINE.map((jour) => (
+          <div
+            key={jour}
+            className="text-center text-xs font-bold text-gray-400 p-2"
+          >
+            {jour}
+          </div>
+        ))}
 
+        {joursCalendrier.map((jour, index) => {
+          const evsJour = evsDuJour(jour);
           return (
-            <div key={i} className="flex flex-col">
-              {/* En-tête colonne */}
+            <div
+              key={index}
+              className={`min-h-[80px] border border-gray-100 rounded-lg p-1 ${
+                jour
+                  ? estAujourdhui(jour)
+                    ? "bg-indigo-50 border-indigo-300"
+                    : "bg-white hover:bg-gray-50"
+                  : "bg-gray-50"
+              }`}
+            >
+              {jour && (
+                <>
+                  <div
+                    className={`text-xs font-bold mb-1 ${
+                      estAujourdhui(jour) ? "text-indigo-600" : "text-gray-600"
+                    }`}
+                  >
+                    {jour}
+                  </div>
+                  <div className="space-y-0.5">
+                    {evsJour.slice(0, 3).map((ev, i) => (
+                      <button
+                        key={i}
+                        onClick={() => onOuvrirDetail(ev)}
+                        className="w-full text-left px-1.5 py-0.5 rounded text-xs font-bold truncate"
+                        style={{
+                          backgroundColor:
+                            membreActif === "famille"
+                              ? "#4A4E69"
+                              : membresAffichage.find(
+                                  (m) => m.id === membreActif,
+                                )?.couleur || "#4A4E69",
+                          color: "white",
+                        }}
+                      >
+                        {ev.heureDebut && ev.heureDebut !== "00:00"
+                          ? `${ev.heureDebut} `
+                          : ""}
+                        {ev.titre}
+                      </button>
+                    ))}
+                    {evsJour.length > 3 && (
+                      <div className="text-xs text-gray-400 px-1">
+                        +{evsJour.length - 3}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// ★ COMPOSANT : VueSemaine
+// ─────────────────────────────────────────────
+function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
+  const [debutSemaine, setDebutSemaine] = useState(() => {
+    const d = new Date();
+    const jour = d.getDay();
+    const diff = jour === 0 ? 6 : jour - 1;
+    d.setDate(d.getDate() - diff);
+    return d;
+  });
+
+  const semainePrecedente = () => {
+    const nouvelle = new Date(debutSemaine);
+    nouvelle.setDate(nouvelle.getDate() - 7);
+    setDebutSemaine(nouvelle);
+  };
+
+  const semaineSuivante = () => {
+    const nouvelle = new Date(debutSemaine);
+    nouvelle.setDate(nouvelle.getDate() + 7);
+    setDebutSemaine(nouvelle);
+  };
+
+  const joursDeLaSemaine = Array.from({ length: 7 }, (_, i) => {
+    const jour = new Date(debutSemaine);
+    jour.setDate(debutSemaine.getDate() + i);
+    return jour;
+  });
+
+  const evsDuJour = (date) => {
+    const dateStr = date.toISOString().split("T")[0];
+    const evsJour = evenementsFiltres.filter((e) => e.date === dateStr);
+    return regrouperEvenements(evsJour);
+  };
+
+  const estAujourdhui = (date) => {
+    const aujourdhui = new Date();
+    return date.toDateString() === aujourdhui.toDateString();
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={semainePrecedente}
+          className="text-gray-400 hover:text-gray-600 font-bold text-xl"
+        >
+          ‹
+        </button>
+        <h3 className="text-sm font-bold text-gray-600">
+          {joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "short",
+          })}{" "}
+          -{" "}
+          {joursDeLaSemaine[6].toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "short",
+          })}
+        </h3>
+        <button
+          onClick={semaineSuivante}
+          className="text-gray-400 hover:text-gray-600 font-bold text-xl"
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-2">
+        {joursDeLaSemaine.map((date, index) => {
+          const evs = evsDuJour(date);
+          return (
+            <div key={index} className="flex flex-col">
               <div
-                className={`rounded-xl py-2 px-1 text-center mb-1.5
-                ${cEstAujourdhui ? "bg-indigo-600 text-white" : "bg-gray-50 text-gray-600"}`}
+                className={`text-center mb-2 ${
+                  estAujourdhui(date) ? "text-indigo-600" : "text-gray-600"
+                }`}
               >
-                <div className="text-xs font-bold uppercase tracking-wide">
-                  {JOURS_SEMAINE[i]}
-                </div>
-                <div className="text-lg font-bold leading-tight">
+                <div className="text-xs font-bold">{JOURS_SEMAINE[index]}</div>
+                <div
+                  className={`text-lg font-bold ${
+                    estAujourdhui(date)
+                      ? "bg-indigo-600 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto"
+                      : ""
+                  }`}
+                >
                   {date.getDate()}
                 </div>
-                {date.getDate() === 1 && (
-                  <div className="text-xs opacity-75">
-                    {MOIS_FR[date.getMonth()].slice(0, 3)}
+              </div>
+              <div className="flex-1 space-y-1.5">
+                {evs.length === 0 && (
+                  <div className="text-center text-gray-300 text-xs py-4">
+                    —
                   </div>
                 )}
-              </div>
-
-              {/* Événements regroupés */}
-              <div className="flex flex-col gap-1 min-h-[3rem]">
-                {evs.length === 0 ? (
-                  <div className="h-1" />
-                ) : (
-                  evs.map((ev, j) => {
-                    const COULEUR_BANDE = "#4A4E69";
-                    const premierMembre = (ev.membres || [ev.membre])[0];
-                    const couleurFond =
-                      membreActif === "famille"
-                        ? null
-                        : membresAffichage.find((m) => m.id === premierMembre)
-                            ?.couleur || "#e5e7eb";
-                    const stylePastille =
-                      membreActif === "famille"
-                        ? {
-                            backgroundColor: "#ffffff",
-                            borderLeft: "3px solid " + COULEUR_BANDE,
-                            paddingLeft: "6px",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-                          }
-                        : { backgroundColor: couleurFond };
-
-                    return (
-                      <button
-                        key={j}
-                        onClick={() => onOuvrirDetail(ev)}
-                        style={stylePastille}
-                        className="w-full text-left rounded-lg px-1.5 py-1 transition-opacity hover:opacity-80 active:opacity-60"
-                        title={`${ev.titre} — ${(ev.membres || [ev.membre]).map((id) => membresAffichage.find((m) => m.id === id)?.nom).join(", ")}`}
-                      >
-                        {/* Heure */}
-                        {ev.heureDebut && ev.heureDebut !== "00:00" && (
-                          <div
-                            className="text-gray-600 font-bold leading-none mb-0.5"
-                            style={{ fontSize: "9px" }}
-                          >
-                            {ev.heureDebut}
-                          </div>
-                        )}
-                        {/* Titre */}
-                        <div
-                          className="text-gray-800 font-bold leading-tight truncate"
-                          style={{ fontSize: "10px" }}
-                        >
-                          {ev.titre}
-                        </div>
-                        {/* ★ Pastilles des participants sous le titre */}
-                        {(ev.membres || [ev.membre]).length > 1 && (
-                          <AvatarsMembres
-                            membresIds={ev.membres || [ev.membre]}
-                            size="sm"
-                          />
-                        )}
-                      </button>
-                    );
-                  })
-                )}
+                {evs.map((ev, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onOuvrirDetail(ev)}
+                    className="w-full text-left px-1.5 py-0.5 rounded text-xs font-bold truncate"
+                    style={{
+                      backgroundColor:
+                        membreActif === "famille"
+                          ? "#4A4E69"
+                          : membresAffichage.find((m) => m.id === membreActif)
+                              ?.couleur || "#4A4E69",
+                      color: "white",
+                    }}
+                  >
+                    <div
+                      className="text-grey-400 font-bold leading-tight truncate"
+                      style={{ fontSize: "10px" }}
+                    >
+                      {ev.titre}
+                    </div>
+                    {(ev.membres || [ev.membre]).length > 1 && (
+                      <AvatarsMembres
+                        membresIds={ev.membres || [ev.membre]}
+                        size="sm"
+                      />
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
           );
@@ -740,15 +776,20 @@ function Calendrier({ membreActif }) {
 
   const [titre, setTitre] = useState("");
   const [date, setDate] = useState("");
+  const [dateFin, setDateFin] = useState(""); // ★ NOUVEAU : date de fin pour événements multi-jours
+  const [touteLaJournee, setTouteLaJournee] = useState(false); // ★ NOUVEAU : checkbox toute la journée
   const [heureDebut, setHeureDebut] = useState("");
   const [heureFin, setHeureFin] = useState("");
   const [recurrence, setRecurrence] = useState("aucune");
   const [dateFinRecurrence, setDateFinRecurrence] = useState("");
+  const [configRecurrencePersonnalisee, setConfigRecurrencePersonnalisee] =
+    useState(null); // ★ NOUVEAU : config récurrence personnalisée
+  const [afficherModalRecurrence, setAfficherModalRecurrence] = useState(false); // ★ NOUVEAU : état du modal
   const [membresChoisis, setMembresChoisis] = useState([]);
   const [lieu, setLieu] = useState("");
   const [lieuType, setLieuType] = useState("texte");
   const [description, setDescription] = useState("");
-  const [evenementEnModification, setEvenementEnModification] = useState(null); // Pour stocker l'événement qu'on modifie
+  const [evenementEnModification, setEvenementEnModification] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "evenements"), (snapshot) => {
@@ -767,22 +808,28 @@ function Calendrier({ membreActif }) {
   const reinitialiserFormulaire = () => {
     setTitre("");
     setDate("");
+    setDateFin("");
+    setTouteLaJournee(false);
     setHeureDebut("");
     setHeureFin("");
     setRecurrence("aucune");
     setDateFinRecurrence("");
+    setConfigRecurrencePersonnalisee(null);
     setMembresChoisis([]);
     setLieu("");
     setLieuType("texte");
     setDescription("");
     setAfficherFormulaire(false);
-    setEvenementEnModification(null); // Réinitialiser l'événement en modification
+    setEvenementEnModification(null);
   };
 
   const ouvrirFormulaireModification = (evenement) => {
-    // Pré-remplir le formulaire avec les données de l'événement
     setTitre(evenement.titre || "");
     setDate(evenement.date || "");
+    setDateFin(evenement.dateFin || "");
+    setTouteLaJournee(
+      !evenement.heureDebut || evenement.heureDebut === "00:00",
+    );
     setHeureDebut(evenement.heureDebut || "00:00");
     setHeureFin(evenement.heureFin || "");
     setRecurrence(evenement.recurrence || "aucune");
@@ -791,9 +838,9 @@ function Calendrier({ membreActif }) {
     setLieu(evenement.lieu || "");
     setLieuType(evenement.lieuType || "texte");
     setDescription(evenement.description || "");
-    setEvenementEnModification(evenement); // Stocker l'événement en modification
-    setAfficherFormulaire(true); // Ouvrir le formulaire
-    setEvenementDetail(null); // Fermer le modal de détail si ouvert
+    setEvenementEnModification(evenement);
+    setAfficherFormulaire(true);
+    setEvenementDetail(null);
   };
 
   const toggleMembre = (membreId) => {
@@ -804,20 +851,31 @@ function Calendrier({ membreActif }) {
     );
   };
 
+  // ★ NOUVEAU : Gestion de la récurrence personnalisée
+  const handleRecurrenceChange = (nouvelleRecurrence) => {
+    setRecurrence(nouvelleRecurrence);
+    if (nouvelleRecurrence === "personnalise") {
+      setAfficherModalRecurrence(true);
+    }
+  };
+
+  const sauvegarderRecurrencePersonnalisee = (config) => {
+    setConfigRecurrencePersonnalisee(config);
+    setAfficherModalRecurrence(false);
+  };
+
   const ajouterEvenement = async () => {
     if (!titre.trim() || !date) return;
 
-    // ★ MODE MODIFICATION : Mettre à jour un événement existant
+    // ★ MODE MODIFICATION
     if (evenementEnModification) {
       const idsAModifier = evenementEnModification.ids || [
         evenementEnModification.id,
       ];
       const batch = writeBatch(db);
 
-      // Supprimer les anciens documents
       idsAModifier.forEach((id) => batch.delete(doc(db, "evenements", id)));
 
-      // Créer les nouveaux documents avec les nouvelles valeurs
       const membresFinaux =
         membresChoisis.length === 0 ? ["famille"] : membresChoisis;
       for (const m of membresFinaux) {
@@ -825,16 +883,18 @@ function Calendrier({ membreActif }) {
         batch.set(ref, {
           titre: titre.trim(),
           date: date,
-          heureDebut: heureDebut || "00:00",
-          heureFin: heureFin || "",
-          heure: heureDebut || "00:00",
+          dateFin: dateFin || date, // ★ NOUVEAU : date de fin
+          touteLaJournee, // ★ NOUVEAU
+          heureDebut: touteLaJournee ? "00:00" : heureDebut || "00:00",
+          heureFin: touteLaJournee ? "" : heureFin || "",
+          heure: touteLaJournee ? "00:00" : heureDebut || "00:00",
           membre: m,
           lieu: lieu.trim(),
           lieuType,
           description: description.trim(),
-          recurrence: "aucune", // Pas de récurrence en modification
+          recurrence: "aucune",
           serieId: null,
-          source: evenementEnModification.source || "local", // Conserver la source
+          source: evenementEnModification.source || "local",
           googleEventId: evenementEnModification.googleEventId || null,
           agendaId: evenementEnModification.agendaId || null,
           createdAt: serverTimestamp(),
@@ -846,26 +906,53 @@ function Calendrier({ membreActif }) {
       return;
     }
 
-    // ★ MODE CRÉATION : Créer un nouvel événement
-    const serieId = recurrence !== "aucune" ? `serie_${Date.now()}` : null;
-    const dates = genererDatesRecurrence(date, recurrence, dateFinRecurrence);
+    // ★ MODE CRÉATION
+    const serieId =
+      recurrence !== "aucune" && recurrence !== "personnalise"
+        ? `serie_${Date.now()}`
+        : recurrence === "personnalise" && configRecurrencePersonnalisee
+          ? `serie_${Date.now()}`
+          : null;
+
+    // Générer les dates selon le type de récurrence
+    let dates = [];
+    if (recurrence === "personnalise" && configRecurrencePersonnalisee) {
+      dates = genererDatesRecurrencePersonnalisee(
+        date,
+        configRecurrencePersonnalisee,
+        configRecurrencePersonnalisee.dateFin || dateFinRecurrence || null,
+      );
+    } else if (recurrence !== "aucune") {
+      dates = genererDatesRecurrence(date, recurrence, dateFinRecurrence);
+    } else {
+      dates = [date];
+    }
+
     const membresFinaux =
       membresChoisis.length === 0 ? ["famille"] : membresChoisis;
     const batch = writeBatch(db);
+
     for (const d of dates) {
       for (const m of membresFinaux) {
         const ref = doc(collection(db, "evenements"));
         batch.set(ref, {
           titre: titre.trim(),
           date: d,
-          heureDebut: heureDebut || "00:00",
-          heureFin: heureFin || "",
-          heure: heureDebut || "00:00",
+          dateFin: dateFin || d, // ★ NOUVEAU
+          touteLaJournee, // ★ NOUVEAU
+          heureDebut: touteLaJournee ? "00:00" : heureDebut || "00:00",
+          heureFin: touteLaJournee ? "" : heureFin || "",
+          heure: touteLaJournee ? "00:00" : heureDebut || "00:00",
           membre: m,
           lieu: lieu.trim(),
           lieuType,
           description: description.trim(),
-          recurrence,
+          recurrence:
+            recurrence === "personnalise" ? "personnalise" : recurrence,
+          configRecurrencePersonnalisee:
+            recurrence === "personnalise"
+              ? configRecurrencePersonnalisee
+              : null,
           serieId,
           createdAt: serverTimestamp(),
         });
@@ -875,10 +962,7 @@ function Calendrier({ membreActif }) {
     reinitialiserFormulaire();
   };
 
-  // ★ Suppression mise à jour : supprimer tous les ids du groupe
   const supprimerEvenement = async (evenement) => {
-    // evenement.ids = tableau des ids Firebase du groupe
-    // evenement.serieId = id de la série (récurrence)
     const idsASupprimer = evenement.ids || [evenement.id];
 
     if (evenement.serieId) {
@@ -886,7 +970,6 @@ function Calendrier({ membreActif }) {
         "Supprimer toute la série ou seulement cet événement ?\n\nOK = toute la série\nAnnuler = cet événement uniquement",
       );
       if (choix) {
-        // Supprime TOUS les docs de la série
         const q = query(
           collection(db, "evenements"),
           where("serieId", "==", evenement.serieId),
@@ -896,13 +979,11 @@ function Calendrier({ membreActif }) {
         snapshot.docs.forEach((d) => batch.delete(d.ref));
         await batch.commit();
       } else {
-        // Supprime seulement les docs de cet événement groupé (tous les membres)
         const batch = writeBatch(db);
         idsASupprimer.forEach((id) => batch.delete(doc(db, "evenements", id)));
         await batch.commit();
       }
     } else {
-      // Pas de récurrence : supprime les docs de tous les membres du groupe
       const batch = writeBatch(db);
       idsASupprimer.forEach((id) => batch.delete(doc(db, "evenements", id)));
       await batch.commit();
@@ -924,13 +1005,11 @@ function Calendrier({ membreActif }) {
           (e) => e.membre === membreActif || e.membre === "famille",
         );
 
-  // ★ Vue liste : on regroupe par date PUIS on fusionne les doublons
   const evenementsParDate = evenementsFiltres.reduce((acc, ev) => {
     if (!acc[ev.date]) acc[ev.date] = [];
     acc[ev.date].push(ev);
     return acc;
   }, {});
-  // On applique regrouperEvenements sur chaque groupe de date
   Object.keys(evenementsParDate).forEach((date) => {
     evenementsParDate[date] = regrouperEvenements(evenementsParDate[date]);
   });
@@ -966,6 +1045,18 @@ function Calendrier({ membreActif }) {
         ))}
       </div>
 
+      {/* ★ MODAL DE RÉCURRENCE PERSONNALISÉE */}
+      {afficherModalRecurrence && (
+        <ModalRecurrencePersonnalisee
+          config={configRecurrencePersonnalisee}
+          onSave={sauvegarderRecurrencePersonnalisee}
+          onClose={() => {
+            setAfficherModalRecurrence(false);
+            setRecurrence("aucune"); // Réinitialiser si annulation
+          }}
+        />
+      )}
+
       {/* Formulaire d'ajout/modification */}
       {afficherFormulaire && (
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
@@ -982,48 +1073,82 @@ function Calendrier({ membreActif }) {
               placeholder="Titre de l'événement..."
               className="border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
             />
-            <div>
-              <label className="text-xs font-bold text-gray-400 mb-1 block">
-                Date
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
-              />
-            </div>
+
+            {/* ★ NOUVEAU : Dates (début et fin) */}
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-xs font-bold text-gray-400 mb-1 block">
-                  Heure début
+                  Date de début
                 </label>
                 <input
-                  type="time"
-                  value={heureDebut}
-                  onChange={(e) => setHeureDebut(e.target.value)}
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
                 />
               </div>
               <div className="flex-1">
                 <label className="text-xs font-bold text-gray-400 mb-1 block">
-                  Heure fin
+                  Date de fin{" "}
+                  <span className="font-normal text-gray-400">(optionnel)</span>
                 </label>
                 <input
-                  type="time"
-                  value={heureFin}
-                  onChange={(e) => setHeureFin(e.target.value)}
+                  type="date"
+                  value={dateFin}
+                  min={date}
+                  onChange={(e) => setDateFin(e.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
                 />
               </div>
             </div>
+
+            {/* ★ NOUVEAU : Checkbox toute la journée */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={touteLaJournee}
+                onChange={(e) => setTouteLaJournee(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-sm text-gray-700">Toute la journée</span>
+            </label>
+
+            {/* Heures (masquées si toute la journée) */}
+            {!touteLaJournee && (
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-bold text-gray-400 mb-1 block">
+                    Heure début
+                  </label>
+                  <input
+                    type="time"
+                    value={heureDebut}
+                    onChange={(e) => setHeureDebut(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-bold text-gray-400 mb-1 block">
+                    Heure fin
+                  </label>
+                  <input
+                    type="time"
+                    value={heureFin}
+                    onChange={(e) => setHeureFin(e.target.value)}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* ★ MODIFIÉ : Récurrence avec option personnalisée */}
             <div>
               <label className="text-xs font-bold text-gray-400 mb-1 block">
                 Récurrence
               </label>
               <select
                 value={recurrence}
-                onChange={(e) => setRecurrence(e.target.value)}
+                onChange={(e) => handleRecurrenceChange(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-400"
               >
                 {recurrences.map((r) => (
@@ -1032,8 +1157,38 @@ function Calendrier({ membreActif }) {
                   </option>
                 ))}
               </select>
+              {recurrence === "personnalise" &&
+                configRecurrencePersonnalisee && (
+                  <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                    ✓ Récurrence configurée :{" "}
+                    {configRecurrencePersonnalisee.intervalle > 1
+                      ? `Tous les ${configRecurrencePersonnalisee.intervalle} `
+                      : "Tous les "}
+                    {configRecurrencePersonnalisee.type === "jour"
+                      ? "jours"
+                      : configRecurrencePersonnalisee.type === "semaine"
+                        ? "semaines"
+                        : configRecurrencePersonnalisee.type === "mois"
+                          ? "mois"
+                          : "années"}
+                    {configRecurrencePersonnalisee.finType === "jamais"
+                      ? " (sans fin)"
+                      : configRecurrencePersonnalisee.finType === "le"
+                        ? ` jusqu'au ${configRecurrencePersonnalisee.dateFin}`
+                        : ` (${configRecurrencePersonnalisee.occurrences} fois)`}
+                    <button
+                      type="button"
+                      onClick={() => setAfficherModalRecurrence(true)}
+                      className="ml-2 text-indigo-600 font-bold hover:underline"
+                    >
+                      Modifier
+                    </button>
+                  </div>
+                )}
             </div>
-            {recurrence !== "aucune" && (
+
+            {/* Date de fin de récurrence (pour récurrences simples) */}
+            {recurrence !== "aucune" && recurrence !== "personnalise" && (
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-1 block">
                   Fin de récurrence{" "}
@@ -1050,6 +1205,7 @@ function Calendrier({ membreActif }) {
                 />
               </div>
             )}
+
             <div>
               <label className="text-xs font-bold text-gray-400 mb-2 block">
                 Qui est concerné ?{" "}
@@ -1173,7 +1329,7 @@ function Calendrier({ membreActif }) {
         </div>
       )}
 
-      {/* ★ Modal de détail — adapté pour les événements groupés */}
+      {/* Modal de détail */}
       {evenementDetail && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-6 w-96 shadow-xl">
@@ -1227,9 +1383,15 @@ function Calendrier({ membreActif }) {
               </div>
             )}
             <div className="flex flex-col gap-2 text-sm text-gray-600 mb-4">
-              <p>📅 {formatDate(evenementDetail.date)}</p>
+              <p>
+                📅 {formatDate(evenementDetail.date)}
+                {evenementDetail.dateFin &&
+                  evenementDetail.dateFin !== evenementDetail.date &&
+                  ` → ${formatDate(evenementDetail.dateFin)}`}
+              </p>
               {evenementDetail.heureDebut &&
-                evenementDetail.heureDebut !== "00:00" && (
+                evenementDetail.heureDebut !== "00:00" &&
+                !evenementDetail.touteLaJournee && (
                   <p>
                     🕐 {evenementDetail.heureDebut}
                     {evenementDetail.heureFin
@@ -1237,6 +1399,9 @@ function Calendrier({ membreActif }) {
                       : ""}
                   </p>
                 )}
+              {evenementDetail.touteLaJournee && (
+                <p className="text-xs text-gray-400">🌞 Toute la journée</p>
+              )}
               {evenementDetail.lieu && evenementDetail.lieuType === "maps" && (
                 <button
                   type="button"
@@ -1258,11 +1423,11 @@ function Calendrier({ membreActif }) {
                 evenementDetail.recurrence !== "aucune" && (
                   <p>
                     🔁{" "}
-                    {
-                      recurrences.find(
-                        (r) => r.id === evenementDetail.recurrence,
-                      )?.nom
-                    }
+                    {evenementDetail.recurrence === "personnalise"
+                      ? "Récurrence personnalisée"
+                      : recurrences.find(
+                          (r) => r.id === evenementDetail.recurrence,
+                        )?.nom}
                   </p>
                 )}
             </div>
@@ -1318,7 +1483,7 @@ function Calendrier({ membreActif }) {
         />
       )}
 
-      {/* ★ Vue LISTE — avec regroupement */}
+      {/* Vue LISTE */}
       {!chargement && vue === "liste" && (
         <>
           {Object.keys(evenementsParDate)

@@ -161,6 +161,42 @@ function urlMaps(adresse) {
   );
 }
 
+function formatDate(dateStr) {
+  if (!dateStr) return "Date non disponible";
+
+  // Gère les deux formats de Google Calendar
+  try {
+    // Si c'est une date ISO complète avec heure (dateTime)
+    if (dateStr.includes("T")) {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return "Date invalide";
+
+      return date.toLocaleDateString("fr-FR", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    }
+
+    // Si c'est une date simple YYYY-MM-DD (événement toute la journée)
+    const [annee, mois, jour] = dateStr.split("-");
+    const date = new Date(annee, parseInt(mois) - 1, jour);
+
+    if (isNaN(date.getTime())) return "Date invalide";
+
+    return date.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch (error) {
+    console.error("Erreur formatDate:", dateStr, error);
+    return "Date invalide";
+  }
+}
+
 function parseDateLocale(dateStr) {
   return new Date(dateStr + "T00:00:00");
 }
@@ -712,6 +748,7 @@ function Calendrier({ membreActif }) {
   const [lieu, setLieu] = useState("");
   const [lieuType, setLieuType] = useState("texte");
   const [description, setDescription] = useState("");
+  const [evenementEnModification, setEvenementEnModification] = useState(null); // Pour stocker l'événement qu'on modifie
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "evenements"), (snapshot) => {
@@ -739,6 +776,24 @@ function Calendrier({ membreActif }) {
     setLieuType("texte");
     setDescription("");
     setAfficherFormulaire(false);
+    setEvenementEnModification(null); // Réinitialiser l'événement en modification
+  };
+
+  const ouvrirFormulaireModification = (evenement) => {
+    // Pré-remplir le formulaire avec les données de l'événement
+    setTitre(evenement.titre || "");
+    setDate(evenement.date || "");
+    setHeureDebut(evenement.heureDebut || "00:00");
+    setHeureFin(evenement.heureFin || "");
+    setRecurrence(evenement.recurrence || "aucune");
+    setDateFinRecurrence("");
+    setMembresChoisis(evenement.membres || [evenement.membre]);
+    setLieu(evenement.lieu || "");
+    setLieuType(evenement.lieuType || "texte");
+    setDescription(evenement.description || "");
+    setEvenementEnModification(evenement); // Stocker l'événement en modification
+    setAfficherFormulaire(true); // Ouvrir le formulaire
+    setEvenementDetail(null); // Fermer le modal de détail si ouvert
   };
 
   const toggleMembre = (membreId) => {
@@ -751,6 +806,47 @@ function Calendrier({ membreActif }) {
 
   const ajouterEvenement = async () => {
     if (!titre.trim() || !date) return;
+
+    // ★ MODE MODIFICATION : Mettre à jour un événement existant
+    if (evenementEnModification) {
+      const idsAModifier = evenementEnModification.ids || [
+        evenementEnModification.id,
+      ];
+      const batch = writeBatch(db);
+
+      // Supprimer les anciens documents
+      idsAModifier.forEach((id) => batch.delete(doc(db, "evenements", id)));
+
+      // Créer les nouveaux documents avec les nouvelles valeurs
+      const membresFinaux =
+        membresChoisis.length === 0 ? ["famille"] : membresChoisis;
+      for (const m of membresFinaux) {
+        const ref = doc(collection(db, "evenements"));
+        batch.set(ref, {
+          titre: titre.trim(),
+          date: date,
+          heureDebut: heureDebut || "00:00",
+          heureFin: heureFin || "",
+          heure: heureDebut || "00:00",
+          membre: m,
+          lieu: lieu.trim(),
+          lieuType,
+          description: description.trim(),
+          recurrence: "aucune", // Pas de récurrence en modification
+          serieId: null,
+          source: evenementEnModification.source || "local", // Conserver la source
+          googleEventId: evenementEnModification.googleEventId || null,
+          agendaId: evenementEnModification.agendaId || null,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+      reinitialiserFormulaire();
+      return;
+    }
+
+    // ★ MODE CRÉATION : Créer un nouvel événement
     const serieId = recurrence !== "aucune" ? `serie_${Date.now()}` : null;
     const dates = genererDatesRecurrence(date, recurrence, dateFinRecurrence);
     const membresFinaux =
@@ -870,11 +966,13 @@ function Calendrier({ membreActif }) {
         ))}
       </div>
 
-      {/* Formulaire d'ajout (inchangé) */}
+      {/* Formulaire d'ajout/modification */}
       {afficherFormulaire && (
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
           <h3 className="text-sm font-bold text-gray-600 mb-4">
-            Nouvel événement
+            {evenementEnModification
+              ? "✏️ Modifier l'événement"
+              : "➕ Nouvel événement"}
           </h3>
           <div className="flex flex-col gap-4">
             <input
@@ -1060,7 +1158,9 @@ function Calendrier({ membreActif }) {
                 onClick={ajouterEvenement}
                 className="flex-1 bg-indigo-600 text-white font-bold py-2 rounded-xl hover:bg-indigo-700 text-sm"
               >
-                Enregistrer
+                {evenementEnModification
+                  ? "💾 Mettre à jour"
+                  : "💾 Enregistrer"}
               </button>
               <button
                 onClick={reinitialiserFormulaire}
@@ -1167,6 +1267,12 @@ function Calendrier({ membreActif }) {
                 )}
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => ouvrirFormulaireModification(evenementDetail)}
+                className="flex-1 text-xs font-bold text-blue-600 border border-blue-200 px-3 py-2 rounded-xl hover:bg-blue-50"
+              >
+                ✏️ Modifier
+              </button>
               <button
                 onClick={() => exporterIcal(evenementDetail)}
                 className="flex-1 text-xs font-bold text-indigo-500 border border-indigo-200 px-3 py-2 rounded-xl hover:bg-indigo-50"

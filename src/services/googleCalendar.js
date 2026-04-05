@@ -1,5 +1,5 @@
 import { googleProvider, auth } from "./firebase";
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { db } from "./firebase";
 import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 
@@ -8,8 +8,8 @@ export async function connecterGoogleCalendar(membreId) {
   try {
     const result = await signInWithPopup(auth, googleProvider);
 
-    // Récupère le token d'accès Google (clé temporaire pour l'API Calendar)
-    const credential = result.credential;
+    // Récupère le token d'accès Google (méthode corrigée pour Firebase v9+)
+    const credential = GoogleAuthProvider.credentialFromResult(result);
     const accessToken = credential?.accessToken;
     const user = result.user;
 
@@ -85,6 +85,16 @@ export async function updateAgendasActifs(membreId, agendasActifs) {
 
 // Importe les événements Google Calendar vers Firestore
 export async function importerEvenements(membreId, accessToken, agendasActifs) {
+  // Si le token n'est pas fourni, on le récupère depuis Firestore
+  if (!accessToken || !agendasActifs) {
+    const tokenData = await getTokenMembre(membreId);
+    if (!tokenData) {
+      throw new Error("Utilisateur non connecté");
+    }
+    accessToken = tokenData.accessToken;
+    agendasActifs = tokenData.agendasActifs;
+  }
+
   const maintenant = new Date();
   const dans3Mois = new Date();
   dans3Mois.setMonth(dans3Mois.getMonth() + 3);
@@ -104,23 +114,55 @@ export async function importerEvenements(membreId, accessToken, agendasActifs) {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    if (!response.ok) continue;
+    // ⚠️ NOUVEAU : Si erreur 401 (token expiré), on force une reconnexion
+    if (response.status === 401) {
+      console.error("❌ Token expiré - reconnexion nécessaire");
+      throw new Error("RECONNEXION_REQUISE");
+    }
+
+    if (!response.ok) {
+      console.error(`Erreur agenda ${agendaId}:`, response.status);
+      continue;
+    }
 
     const data = await response.json();
+    console.log(
+      `📅 ${data.items?.length || 0} événements trouvés dans ${agendaId}`,
+    );
 
     for (const event of data.items || []) {
+      const dateDebut = event.start?.dateTime
+        ? event.start.dateTime.split("T")[0]
+        : event.start?.date;
+
       evenements.push({
         id: `google_${event.id}`,
         titre: event.summary || "Sans titre",
-        debut: event.start?.dateTime || event.start?.date,
-        fin: event.end?.dateTime || event.end?.date,
+        date: dateDebut, // ⚠️ AJOUT : propriété date pour compatibilité avec Calendrier.jsx
+        debut: dateDebut,
+        fin: event.end?.dateTime
+          ? event.end.dateTime.split("T")[0]
+          : event.end?.date,
+        heureDebut: event.start?.dateTime
+          ? new Date(event.start.dateTime).toLocaleTimeString("fr-FR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : null,
+        heureFin: event.end?.dateTime
+          ? new Date(event.end.dateTime).toLocaleTimeString("fr-FR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : null,
         lieu: event.location || "",
         description: event.description || "",
         membreId,
+        membre: membreId, // ⚠️ AJOUT : alias pour compatibilité
         source: "google",
         googleEventId: event.id,
         agendaId,
-        couleur: null, // sera définie par la couleur du membre
+        couleur: null,
       });
     }
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { db } from "../services/firebase";
 import {
   collection,
@@ -452,19 +452,19 @@ function parseDateLocale(dateStr) {
 // ─────────────────────────────────────────────
 /**
  * Détermine la couleur d'arrière-plan d'une étiquette d'événement
- * Règle : 
+ * Règle :
  * - 1 seul membre → couleur du membre
  * - Plusieurs membres → couleur famille (#4A4E69)
  */
 function getCouleurEtiquette(ev) {
   const membresIds = ev.membres || [ev.membre];
-  
+
   // Si 1 seul membre : retourner sa couleur
   if (membresIds.length === 1) {
     const membre = membresAffichage.find((m) => m.id === membresIds[0]);
     return membre?.couleur || "#4A4E69";
   }
-  
+
   // Si plusieurs membres : retourner la couleur famille
   return "#4A4E69";
 }
@@ -524,6 +524,38 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
     joursCalendrier.push(j);
   }
 
+  const grilleJoursRef = useRef(null);
+  const [positionsLignes, setPositionsLignes] = useState([]);
+
+  const calculerPositionsLignes = () => {
+    const grille = grilleJoursRef.current;
+    if (!grille) return;
+
+    const enfants = Array.from(grille.children);
+    const nbLignes = Math.ceil(enfants.length / 7);
+    const nouvellesPositions = [];
+
+    for (let ligne = 0; ligne < nbLignes; ligne++) {
+      const cellule = enfants[ligne * 7];
+      if (cellule) {
+        nouvellesPositions.push(cellule.offsetTop);
+      }
+    }
+
+    setPositionsLignes(nouvellesPositions);
+  };
+
+  useLayoutEffect(() => {
+    calculerPositionsLignes();
+    window.addEventListener("resize", calculerPositionsLignes);
+    return () => window.removeEventListener("resize", calculerPositionsLignes);
+  }, [
+    joursCalendrier.length,
+    moisAffiche,
+    anneeAffichee,
+    evenementsFiltres.length,
+  ]);
+
   // ★ NOUVEAU : Conversion jour -> index de cellule dans la grille
   const getIndexCellule = (jour) => {
     if (!jour) return -1;
@@ -534,43 +566,51 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   const evenementsMultiJours = [];
   const evenementsMonoJourParJour = {};
 
+  const nbCellules = joursCalendrier.length;
+  const nbSemaines = Math.ceil(nbCellules / 7);
+  const lanesParSemaine = Array.from({ length: nbSemaines }, () => []);
+
+  const hauteurBarre = 22;
+  const margeEntreBarres = 4;
+
+  const evenementsMultiJoursMap = new Map();
+
   evenementsFiltres.forEach((ev) => {
     const dateDebut = new Date(ev.date);
     const dateFin = ev.dateFin ? new Date(ev.dateFin) : dateDebut;
-    
-    // Événement sur plusieurs jours
-    if (dateFin.toISOString().split("T")[0] !== dateDebut.toISOString().split("T")[0]) {
-      const jourDebut = dateDebut.getDate();
-      const jourFin = dateFin.getDate();
-      
-      // Vérifier que l'événement chevauche le mois affiché
-      const dansLeMoisActuel = (
-        (dateDebut.getMonth() === moisAffiche && dateDebut.getFullYear() === anneeAffichee) ||
-        (dateFin.getMonth() === moisAffiche && dateFin.getFullYear() === anneeAffichee) ||
-        (dateDebut < premiersJours && dateFin > new Date(anneeAffichee, moisAffiche + 1, 0))
-      );
 
-      if (dansLeMoisActuel) {
-        const indexDebut = getIndexCellule(
-          dateDebut.getMonth() === moisAffiche && dateDebut.getFullYear() === anneeAffichee
-            ? jourDebut
-            : 1
-        );
-        const indexFin = getIndexCellule(
-          dateFin.getMonth() === moisAffiche && dateFin.getFullYear() === anneeAffichee
-            ? jourFin
-            : dernierJourMois
-        );
+    const estMultiJour =
+      dateFin.toISOString().split("T")[0] !==
+      dateDebut.toISOString().split("T")[0];
 
-        evenementsMultiJours.push({
+    if (estMultiJour) {
+      const cle = `${ev.titre}__${ev.date}__${ev.dateFin || ev.date}__${ev.heureDebut || ""}__${ev.serieId || ""}`;
+      const membresIds = ev.membres || [ev.membre];
+      const ids = ev.ids || [ev.id];
+
+      if (evenementsMultiJoursMap.has(cle)) {
+        const existant = evenementsMultiJoursMap.get(cle);
+        membresIds.forEach((membreId) => {
+          if (membreId && !existant.membres.includes(membreId)) {
+            existant.membres.push(membreId);
+          }
+        });
+        ids.forEach((id) => {
+          if (!existant.ids.includes(id)) {
+            existant.ids.push(id);
+          }
+        });
+      } else {
+        evenementsMultiJoursMap.set(cle, {
           ...ev,
-          indexDebut,
-          indexFin,
+          membres: Array.from(new Set(membresIds)),
+          ids: Array.from(new Set(ids)),
         });
       }
-    } 
-    // Événement d'un seul jour
-    else if (dateDebut.getMonth() === moisAffiche && dateDebut.getFullYear() === anneeAffichee) {
+    } else if (
+      dateDebut.getMonth() === moisAffiche &&
+      dateDebut.getFullYear() === anneeAffichee
+    ) {
       const jour = dateDebut.getDate();
       if (!evenementsMonoJourParJour[jour]) {
         evenementsMonoJourParJour[jour] = [];
@@ -578,6 +618,88 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
       evenementsMonoJourParJour[jour].push(ev);
     }
   });
+
+  Array.from(evenementsMultiJoursMap.values()).forEach((ev) => {
+    const dateDebut = new Date(ev.date);
+    const dateFin = ev.dateFin ? new Date(ev.dateFin) : dateDebut;
+
+    const jourDebut = dateDebut.getDate();
+    const jourFin = dateFin.getDate();
+
+    const dansLeMoisActuel =
+      (dateDebut.getMonth() === moisAffiche &&
+        dateDebut.getFullYear() === anneeAffichee) ||
+      (dateFin.getMonth() === moisAffiche &&
+        dateFin.getFullYear() === anneeAffichee) ||
+      (dateDebut < premiersJours &&
+        dateFin > new Date(anneeAffichee, moisAffiche + 1, 0));
+
+    if (!dansLeMoisActuel) return;
+
+    const indexDebut = getIndexCellule(
+      dateDebut.getMonth() === moisAffiche &&
+        dateDebut.getFullYear() === anneeAffichee
+        ? jourDebut
+        : 1,
+    );
+    const indexFin = getIndexCellule(
+      dateFin.getMonth() === moisAffiche &&
+        dateFin.getFullYear() === anneeAffichee
+        ? jourFin
+        : dernierJourMois,
+    );
+
+    const semaineDebut = Math.floor(indexDebut / 7);
+    const jourDebutIndex = indexDebut % 7;
+    const semaineFin = Math.floor(indexFin / 7);
+    const jourFinIndex = indexFin % 7;
+
+    for (let sem = semaineDebut; sem <= semaineFin; sem++) {
+      const premierJourBarre = sem === semaineDebut ? jourDebutIndex : 0;
+      const dernierJourBarre = sem === semaineFin ? jourFinIndex : 6;
+      const largeurBarre = dernierJourBarre - premierJourBarre + 1;
+
+      let laneIdx = lanesParSemaine[sem].findIndex((lane) => {
+        return Array.from({ length: largeurBarre }).every(
+          (_, colonne) => !lane[premierJourBarre + colonne],
+        );
+      });
+
+      if (laneIdx === -1) {
+        laneIdx = lanesParSemaine[sem].length;
+        lanesParSemaine[sem][laneIdx] = Array(7).fill(false);
+      }
+
+      for (let col = premierJourBarre; col <= dernierJourBarre; col++) {
+        lanesParSemaine[sem][laneIdx][col] = true;
+      }
+
+      evenementsMultiJours.push({
+        ...ev,
+        semaine: sem,
+        colDebut: premierJourBarre,
+        largeur: largeurBarre,
+        lane: laneIdx,
+      });
+    }
+  });
+
+  const maxLignesBarres = Math.max(
+    1,
+    ...lanesParSemaine.map((lanes) => lanes.length),
+  );
+  const hauteurZoneBarres =
+    maxLignesBarres * hauteurBarre +
+    Math.max(0, maxLignesBarres - 1) * margeEntreBarres +
+    4;
+
+  const hauteurZoneBarresSemaine = (semaine) => {
+    const nbLignes = lanesParSemaine[semaine]?.length || 0;
+    if (nbLignes === 0) return 0;
+    return (
+      nbLignes * hauteurBarre + Math.max(0, nbLignes - 1) * margeEntreBarres + 4
+    );
+  };
 
   const moisPrecedent = () => {
     if (moisAffiche === 0) {
@@ -642,73 +764,53 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
         {/* ★ NOUVEAU : Barres multi-jours en position absolue */}
         <div className="absolute inset-0 pointer-events-none z-10">
           {evenementsMultiJours.map((ev, idx) => {
-            const nbCellules = joursCalendrier.length;
-            const nbSemaines = Math.ceil(nbCellules / 7);
-            
-            const semaineDebut = Math.floor(ev.indexDebut / 7);
-            const jourDebut = ev.indexDebut % 7;
-            const semaineFin = Math.floor(ev.indexFin / 7);
-            const jourFin = ev.indexFin % 7;
-
             const couleurMembre = getCouleurEtiquette(ev);
+            const positionY = positionsLignes[ev.semaine];
+            const topOffset =
+              positionY != null
+                ? positionY + 24 + ev.lane * (hauteurBarre + margeEntreBarres)
+                : `calc(${ev.semaine * (80 + 4)}px + 8px + 20px + ${ev.lane * (hauteurBarre + margeEntreBarres)}px)`;
 
-            // Si l'événement traverse plusieurs semaines, on crée plusieurs barres
-            const barres = [];
-            for (let sem = semaineDebut; sem <= semaineFin; sem++) {
-              const premierJourBarre = sem === semaineDebut ? jourDebut : 0;
-              const dernierJourBarre = sem === semaineFin ? jourFin : 6;
-              const largeurBarre = dernierJourBarre - premierJourBarre + 1;
-
-              barres.push({
-                semaine: sem,
-                colDebut: premierJourBarre,
-                largeur: largeurBarre,
-              });
-            }
-
-            return barres.map((barre, barreIdx) => {
-              const hauteurCellule = 80; // min-h-[80px]
-              const espacementEntreCellules = 4; // gap-1 = 0.25rem = 4px
-              const espacementTotal = 8; // p-2 de l'en-tête = 8px
-
-              return (
-                <div
-                  key={`${idx}-${barreIdx}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOuvrirDetail(ev);
-                  }}
-                  className="absolute pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity"
-                  style={{
-                    top: `calc(${barre.semaine * (hauteurCellule + espacementEntreCellules)}px + ${espacementTotal}px + 20px)`,
-                    left: `calc(${(barre.colDebut / 7) * 100}% + ${barre.colDebut * espacementEntreCellules}px)`,
-                    width: `calc(${(barre.largeur / 7) * 100}% - ${espacementEntreCellules}px)`,
-                    height: '22px',
-                    backgroundColor: couleurMembre,
-                    borderRadius: '4px',
-                    padding: '2px 6px',
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    color: 'white',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                  title={ev.titre}
-                >
-                  {ev.titre}
-                </div>
-              );
-            });
+            return (
+              <div
+                key={`${idx}-${ev.semaine}-${ev.colDebut}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOuvrirDetail(ev);
+                }}
+                className="absolute pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity"
+                style={{
+                  top:
+                    typeof topOffset === "number"
+                      ? `${topOffset}px`
+                      : topOffset,
+                  left: `calc(${(ev.colDebut / 7) * 100}% + ${ev.colDebut * 4}px)`,
+                  width: `calc(${(ev.largeur / 7) * 100}% - 4px)`,
+                  height: `${hauteurBarre}px`,
+                  backgroundColor: couleurMembre,
+                  borderRadius: "4px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: "700",
+                  color: "white",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                title={ev.titre}
+              >
+                {ev.titre}
+              </div>
+            );
           })}
         </div>
 
         {/* Grille des jours (avec espace pour les barres) */}
-        <div className="grid grid-cols-7 gap-1">
+        <div ref={grilleJoursRef} className="grid grid-cols-7 gap-1">
           {joursCalendrier.map((jour, index) => {
-            const evsJour = jour ? (evenementsMonoJourParJour[jour] || []) : [];
+            const evsJour = jour ? evenementsMonoJourParJour[jour] || [] : [];
             const evsAffiches = regrouperEvenements(evsJour);
 
             return (
@@ -726,13 +828,21 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
                   <>
                     <div
                       className={`text-xs font-bold mb-1 ${
-                        estAujourdhui(jour) ? "text-indigo-600" : "text-gray-600"
+                        estAujourdhui(jour)
+                          ? "text-indigo-600"
+                          : "text-gray-600"
                       }`}
                     >
                       {jour}
                     </div>
-                    {/* ★ MODIFIÉ : Espace réservé pour les barres multi-jours (30px) */}
-                    <div className="h-[30px]"></div>
+                    {/* ★ Espace réservé pour les barres multi-jours */}
+                    <div
+                      style={{
+                        height: `${hauteurZoneBarresSemaine(
+                          Math.floor(index / 7),
+                        )}px`,
+                      }}
+                    ></div>
                     {/* Événements mono-jour */}
                     <div className="space-y-0.5">
                       {evsAffiches.slice(0, 2).map((ev, i) => {
@@ -750,7 +860,10 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
                               color: "white",
                             }}
                           >
-                            <div className="truncate leading-tight" style={{ fontSize: "10px" }}>
+                            <div
+                              className="truncate leading-tight"
+                              style={{ fontSize: "10px" }}
+                            >
                               {ev.heureDebut && ev.heureDebut !== "00:00"
                                 ? `${ev.heureDebut} `
                                 : ""}
@@ -884,7 +997,7 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
                   const membresIds = ev.membres || [ev.membre];
                   const couleurEtiquette = getCouleurEtiquette(ev);
                   const estMultiMembres = membresIds.length > 1;
-                  
+
                   return (
                     <button
                       key={i}
@@ -904,10 +1017,7 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
                       {/* Pastilles des membres si événement multi-membres */}
                       {estMultiMembres && (
                         <div className="flex gap-0.5 mt-0.5">
-                          <AvatarsMembres
-                            membresIds={membresIds}
-                            size="sm"
-                          />
+                          <AvatarsMembres membresIds={membresIds} size="sm" />
                         </div>
                       )}
                     </button>
@@ -998,7 +1108,15 @@ function Calendrier({ membreActif }) {
     setHeureFin(evenement.heureFin || "");
     setRecurrence(evenement.recurrence || "aucune");
     setDateFinRecurrence("");
-    setMembresChoisis(evenement.membres || [evenement.membre]);
+
+    const membresInitiales = evenement.membres || [evenement.membre];
+    const membresSanitises = membresInitiales.filter(
+      (membreId) => membreId !== "famille" || membresInitiales.length === 1,
+    );
+    setMembresChoisis(
+      membresSanitises[0] === "famille" ? [] : membresSanitises,
+    );
+
     setLieu(evenement.lieu || "");
     setLieuType(evenement.lieuType || "texte");
     setDescription(evenement.description || "");
@@ -1040,8 +1158,9 @@ function Calendrier({ membreActif }) {
 
       idsAModifier.forEach((id) => batch.delete(doc(db, "evenements", id)));
 
+      const selectedMembers = membresChoisis.filter((m) => m !== "famille");
       const membresFinaux =
-        membresChoisis.length === 0 ? ["famille"] : membresChoisis;
+        selectedMembers.length === 0 ? ["famille"] : selectedMembers;
       for (const m of membresFinaux) {
         const ref = doc(collection(db, "evenements"));
         batch.set(ref, {
@@ -1092,8 +1211,9 @@ function Calendrier({ membreActif }) {
       dates = [date];
     }
 
+    const selectedMembers = membresChoisis.filter((m) => m !== "famille");
     const membresFinaux =
-      membresChoisis.length === 0 ? ["famille"] : membresChoisis;
+      selectedMembers.length === 0 ? ["famille"] : selectedMembers;
     const batch = writeBatch(db);
 
     for (const d of dates) {

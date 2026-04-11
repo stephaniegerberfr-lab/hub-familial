@@ -504,7 +504,7 @@ function AvatarsMembres({ membresIds = [], size = "md", showNames = false }) {
 }
 
 // ─────────────────────────────────────────────
-// ★ COMPOSANT : VueMensuelle
+// ★ COMPOSANT : VueMensuelle (avec barres multi-jours)
 // ─────────────────────────────────────────────
 function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   const aujourdhui = new Date();
@@ -524,6 +524,61 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
     joursCalendrier.push(j);
   }
 
+  // ★ NOUVEAU : Conversion jour -> index de cellule dans la grille
+  const getIndexCellule = (jour) => {
+    if (!jour) return -1;
+    return decalage + jour - 1;
+  };
+
+  // ★ NOUVEAU : Séparation événements multi-jours vs mono-jour
+  const evenementsMultiJours = [];
+  const evenementsMonoJourParJour = {};
+
+  evenementsFiltres.forEach((ev) => {
+    const dateDebut = new Date(ev.date);
+    const dateFin = ev.dateFin ? new Date(ev.dateFin) : dateDebut;
+    
+    // Événement sur plusieurs jours
+    if (dateFin.toISOString().split("T")[0] !== dateDebut.toISOString().split("T")[0]) {
+      const jourDebut = dateDebut.getDate();
+      const jourFin = dateFin.getDate();
+      
+      // Vérifier que l'événement chevauche le mois affiché
+      const dansLeMoisActuel = (
+        (dateDebut.getMonth() === moisAffiche && dateDebut.getFullYear() === anneeAffichee) ||
+        (dateFin.getMonth() === moisAffiche && dateFin.getFullYear() === anneeAffichee) ||
+        (dateDebut < premiersJours && dateFin > new Date(anneeAffichee, moisAffiche + 1, 0))
+      );
+
+      if (dansLeMoisActuel) {
+        const indexDebut = getIndexCellule(
+          dateDebut.getMonth() === moisAffiche && dateDebut.getFullYear() === anneeAffichee
+            ? jourDebut
+            : 1
+        );
+        const indexFin = getIndexCellule(
+          dateFin.getMonth() === moisAffiche && dateFin.getFullYear() === anneeAffichee
+            ? jourFin
+            : dernierJourMois
+        );
+
+        evenementsMultiJours.push({
+          ...ev,
+          indexDebut,
+          indexFin,
+        });
+      }
+    } 
+    // Événement d'un seul jour
+    else if (dateDebut.getMonth() === moisAffiche && dateDebut.getFullYear() === anneeAffichee) {
+      const jour = dateDebut.getDate();
+      if (!evenementsMonoJourParJour[jour]) {
+        evenementsMonoJourParJour[jour] = [];
+      }
+      evenementsMonoJourParJour[jour].push(ev);
+    }
+  });
+
   const moisPrecedent = () => {
     if (moisAffiche === 0) {
       setMoisAffiche(11);
@@ -540,13 +595,6 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
     } else {
       setMoisAffiche(moisAffiche + 1);
     }
-  };
-
-  const evsDuJour = (jour) => {
-    if (!jour) return [];
-    const dateStr = `${anneeAffichee}-${String(moisAffiche + 1).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
-    const evsJour = evenementsFiltres.filter((e) => e.date === dateStr);
-    return regrouperEvenements(evsJour);
   };
 
   const estAujourdhui = (jour) => {
@@ -577,7 +625,8 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      {/* En-têtes des jours */}
+      <div className="grid grid-cols-7 gap-1 mb-1">
         {JOURS_SEMAINE.map((jour) => (
           <div
             key={jour}
@@ -586,74 +635,150 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
             {jour}
           </div>
         ))}
+      </div>
 
-        {joursCalendrier.map((jour, index) => {
-          const evsJour = evsDuJour(jour);
-          return (
-            <div
-              key={index}
-              className={`min-h-[80px] border border-gray-100 rounded-lg p-1 ${
-                jour
-                  ? estAujourdhui(jour)
-                    ? "bg-indigo-50 border-indigo-300"
-                    : "bg-white hover:bg-gray-50"
-                  : "bg-gray-50"
-              }`}
-            >
-              {jour && (
-                <>
-                  <div
-                    className={`text-xs font-bold mb-1 ${
-                      estAujourdhui(jour) ? "text-indigo-600" : "text-gray-600"
-                    }`}
-                  >
-                    {jour}
-                  </div>
-                  <div className="space-y-0.5">
-                    {evsJour.slice(0, 3).map((ev, i) => {
-                      const membresIds = ev.membres || [ev.membre];
-                      const couleurEtiquette = getCouleurEtiquette(ev);
-                      const estMultiMembres = membresIds.length > 1;
-                      
-                      return (
-                        <button
-                          key={i}
-                          onClick={() => onOuvrirDetail(ev)}
-                          className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
-                          style={{
-                            backgroundColor: couleurEtiquette,
-                            color: "white",
-                          }}
-                        >
-                          <div className="truncate leading-tight" style={{ fontSize: "10px" }}>
-                            {ev.heureDebut && ev.heureDebut !== "00:00"
-                              ? `${ev.heureDebut} `
-                              : ""}
-                            {ev.titre}
-                          </div>
-                          {/* Pastilles des membres si événement multi-membres */}
-                          {estMultiMembres && (
-                            <div className="flex gap-0.5 mt-0.5">
-                              <AvatarsMembres
-                                membresIds={membresIds}
-                                size="sm"
-                              />
+      {/* Conteneur principal avec position relative pour les barres absolues */}
+      <div className="relative">
+        {/* ★ NOUVEAU : Barres multi-jours en position absolue */}
+        <div className="absolute inset-0 pointer-events-none z-10">
+          {evenementsMultiJours.map((ev, idx) => {
+            const nbCellules = joursCalendrier.length;
+            const nbSemaines = Math.ceil(nbCellules / 7);
+            
+            const semaineDebut = Math.floor(ev.indexDebut / 7);
+            const jourDebut = ev.indexDebut % 7;
+            const semaineFin = Math.floor(ev.indexFin / 7);
+            const jourFin = ev.indexFin % 7;
+
+            const couleurMembre = getCouleurEtiquette(ev);
+
+            // Si l'événement traverse plusieurs semaines, on crée plusieurs barres
+            const barres = [];
+            for (let sem = semaineDebut; sem <= semaineFin; sem++) {
+              const premierJourBarre = sem === semaineDebut ? jourDebut : 0;
+              const dernierJourBarre = sem === semaineFin ? jourFin : 6;
+              const largeurBarre = dernierJourBarre - premierJourBarre + 1;
+
+              barres.push({
+                semaine: sem,
+                colDebut: premierJourBarre,
+                largeur: largeurBarre,
+              });
+            }
+
+            return barres.map((barre, barreIdx) => {
+              const hauteurCellule = 80; // min-h-[80px]
+              const espacementEntreCellules = 4; // gap-1 = 0.25rem = 4px
+              const espacementTotal = 8; // p-2 de l'en-tête = 8px
+
+              return (
+                <div
+                  key={`${idx}-${barreIdx}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOuvrirDetail(ev);
+                  }}
+                  className="absolute pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{
+                    top: `calc(${barre.semaine * (hauteurCellule + espacementEntreCellules)}px + ${espacementTotal}px + 20px)`,
+                    left: `calc(${(barre.colDebut / 7) * 100}% + ${barre.colDebut * espacementEntreCellules}px)`,
+                    width: `calc(${(barre.largeur / 7) * 100}% - ${espacementEntreCellules}px)`,
+                    height: '22px',
+                    backgroundColor: couleurMembre,
+                    borderRadius: '4px',
+                    padding: '2px 6px',
+                    fontSize: '10px',
+                    fontWeight: '700',
+                    color: 'white',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title={ev.titre}
+                >
+                  {ev.titre}
+                </div>
+              );
+            });
+          })}
+        </div>
+
+        {/* Grille des jours (avec espace pour les barres) */}
+        <div className="grid grid-cols-7 gap-1">
+          {joursCalendrier.map((jour, index) => {
+            const evsJour = jour ? (evenementsMonoJourParJour[jour] || []) : [];
+            const evsAffiches = regrouperEvenements(evsJour);
+
+            return (
+              <div
+                key={index}
+                className={`min-h-[80px] border border-gray-100 rounded-lg p-1 ${
+                  jour
+                    ? estAujourdhui(jour)
+                      ? "bg-indigo-50 border-indigo-300"
+                      : "bg-white hover:bg-gray-50"
+                    : "bg-gray-50"
+                }`}
+              >
+                {jour && (
+                  <>
+                    <div
+                      className={`text-xs font-bold mb-1 ${
+                        estAujourdhui(jour) ? "text-indigo-600" : "text-gray-600"
+                      }`}
+                    >
+                      {jour}
+                    </div>
+                    {/* ★ MODIFIÉ : Espace réservé pour les barres multi-jours (30px) */}
+                    <div className="h-[30px]"></div>
+                    {/* Événements mono-jour */}
+                    <div className="space-y-0.5">
+                      {evsAffiches.slice(0, 2).map((ev, i) => {
+                        const membresIds = ev.membres || [ev.membre];
+                        const couleurEtiquette = getCouleurEtiquette(ev);
+                        const estMultiMembres = membresIds.length > 1;
+
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => onOuvrirDetail(ev)}
+                            className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
+                            style={{
+                              backgroundColor: couleurEtiquette,
+                              color: "white",
+                            }}
+                          >
+                            <div className="truncate leading-tight" style={{ fontSize: "10px" }}>
+                              {ev.heureDebut && ev.heureDebut !== "00:00"
+                                ? `${ev.heureDebut} `
+                                : ""}
+                              {ev.titre}
                             </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                    {evsJour.length > 3 && (
-                      <div className="text-xs text-gray-400 px-1">
-                        +{evsJour.length - 3}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })}
+                            {estMultiMembres && (
+                              <div className="flex gap-0.5 mt-0.5">
+                                <AvatarsMembres
+                                  membresIds={membresIds}
+                                  size="sm"
+                                />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {evsAffiches.length > 2 && (
+                        <div className="text-xs text-gray-400 px-1">
+                          +{evsAffiches.length - 2}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

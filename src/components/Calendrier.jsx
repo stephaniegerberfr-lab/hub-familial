@@ -276,7 +276,6 @@ function genererDatesRecurrencePersonnalisee(
       // Pour les semaines, on doit gérer les jours de la semaine sélectionnés
       if (joursSelectiones && joursSelectiones.length > 0) {
         // Chercher le prochain jour correspondant
-        const jourActuel = current.getDay();
         let joursTrouve = false;
 
         for (let i = 1; i <= 7; i++) {
@@ -410,39 +409,6 @@ function urlMaps(adresse) {
   );
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return "Date non disponible";
-
-  try {
-    if (dateStr.includes("T")) {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return "Date invalide";
-
-      return date.toLocaleDateString("fr-FR", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    }
-
-    const [annee, mois, jour] = dateStr.split("-");
-    const date = new Date(annee, parseInt(mois) - 1, jour);
-
-    if (isNaN(date.getTime())) return "Date invalide";
-
-    return date.toLocaleDateString("fr-FR", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch (error) {
-    console.error("Erreur formatDate:", dateStr, error);
-    return "Date invalide";
-  }
-}
-
 function parseDateLocale(dateStr) {
   return new Date(dateStr + "T00:00:00");
 }
@@ -506,7 +472,7 @@ function AvatarsMembres({ membresIds = [], size = "md", showNames = false }) {
 // ─────────────────────────────────────────────
 // ★ COMPOSANT : VueMensuelle (avec barres multi-jours)
 // ─────────────────────────────────────────────
-function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
+function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
   const aujourdhui = new Date();
   const [moisAffiche, setMoisAffiche] = useState(aujourdhui.getMonth());
   const [anneeAffichee, setAnneeAffichee] = useState(aujourdhui.getFullYear());
@@ -555,9 +521,12 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   };
 
   useLayoutEffect(() => {
-    calculerPositionsLignes();
+    const rafId = window.requestAnimationFrame(calculerPositionsLignes);
     window.addEventListener("resize", calculerPositionsLignes);
-    return () => window.removeEventListener("resize", calculerPositionsLignes);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", calculerPositionsLignes);
+    };
   }, [
     joursCalendrier.length,
     moisAffiche,
@@ -692,15 +661,6 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
       });
     }
   });
-
-  const maxLignesBarres = Math.max(
-    1,
-    ...lanesParSemaine.map((lanes) => lanes.length),
-  );
-  const hauteurZoneBarres =
-    maxLignesBarres * hauteurBarre +
-    Math.max(0, maxLignesBarres - 1) * margeEntreBarres +
-    4;
 
   const hauteurZoneBarresSemaine = (semaine) => {
     const nbLignes = lanesParSemaine[semaine]?.length || 0;
@@ -919,7 +879,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
 // ─────────────────────────────────────────────
 // ★ COMPOSANT : VueSemaine
 // ─────────────────────────────────────────────
-function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
+function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
   const [debutSemaine, setDebutSemaine] = useState(() => {
     const d = new Date();
     const jour = d.getDay();
@@ -928,7 +888,6 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
     return d;
   });
 
-  const aujourdhui = new Date();
   const debutSemaineAujourdhui = (() => {
     const d = new Date();
     const jour = d.getDay();
@@ -1020,7 +979,6 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   const lanes = [];
   const hauteurBarre = 22;
   const margeEntreBarres = 4;
-  const hauteurEntete = 52;
 
   Array.from(evenementsMultiJoursMap.values()).forEach((ev) => {
     const dateDebut = parseDateLocale(ev.date);

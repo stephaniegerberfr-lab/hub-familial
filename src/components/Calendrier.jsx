@@ -511,6 +511,15 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
   const [moisAffiche, setMoisAffiche] = useState(aujourdhui.getMonth());
   const [anneeAffichee, setAnneeAffichee] = useState(aujourdhui.getFullYear());
 
+  const estMoisActuel =
+    moisAffiche === aujourdhui.getMonth() &&
+    anneeAffichee === aujourdhui.getFullYear();
+
+  const retourMoisActuel = () => {
+    setMoisAffiche(aujourdhui.getMonth());
+    setAnneeAffichee(aujourdhui.getFullYear());
+  };
+
   const premiersJours = new Date(anneeAffichee, moisAffiche, 1);
   const dernierJourMois = new Date(anneeAffichee, moisAffiche + 1, 0).getDate();
   const premierJourSemaine = premiersJours.getDay();
@@ -736,9 +745,19 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
         >
           ‹
         </button>
-        <h3 className="text-lg font-bold text-gray-800">
-          {MOIS_FR[moisAffiche]} {anneeAffichee}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-bold text-gray-800">
+            {MOIS_FR[moisAffiche]} {anneeAffichee}
+          </h3>
+          {!estMoisActuel && (
+            <button
+              onClick={retourMoisActuel}
+              className="rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-bold hover:bg-gray-200"
+            >
+              Aujourd'hui
+            </button>
+          )}
+        </div>
         <button
           onClick={moisSuivant}
           className="text-gray-400 hover:text-gray-600 font-bold text-xl"
@@ -909,6 +928,22 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
     return d;
   });
 
+  const aujourdhui = new Date();
+  const debutSemaineAujourdhui = (() => {
+    const d = new Date();
+    const jour = d.getDay();
+    const diff = jour === 0 ? 6 : jour - 1;
+    d.setDate(d.getDate() - diff);
+    return d;
+  })();
+
+  const retourSemaineActuelle = () => {
+    setDebutSemaine(new Date(debutSemaineAujourdhui));
+  };
+
+  const estSemaineActuelle =
+    debutSemaine.toDateString() === debutSemaineAujourdhui.toDateString();
+
   const semainePrecedente = () => {
     const nouvelle = new Date(debutSemaine);
     nouvelle.setDate(nouvelle.getDate() - 7);
@@ -1051,17 +1086,27 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
         >
           ‹
         </button>
-        <h3 className="text-sm font-bold text-gray-600">
-          {joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
-            day: "numeric",
-            month: "short",
-          })}{" "}
-          -{" "}
-          {joursDeLaSemaine[6].toLocaleDateString("fr-FR", {
-            day: "numeric",
-            month: "short",
-          })}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-bold text-gray-600">
+            {joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
+              day: "numeric",
+              month: "short",
+            })}{" "}
+            -{" "}
+            {joursDeLaSemaine[6].toLocaleDateString("fr-FR", {
+              day: "numeric",
+              month: "short",
+            })}
+          </h3>
+          {!estSemaineActuelle && (
+            <button
+              onClick={retourSemaineActuelle}
+              className="rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-bold hover:bg-gray-200"
+            >
+              Aujourd'hui
+            </button>
+          )}
+        </div>
         <button
           onClick={semaineSuivante}
           className="text-gray-400 hover:text-gray-600 font-bold text-xl"

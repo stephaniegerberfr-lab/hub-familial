@@ -448,6 +448,28 @@ function parseDateLocale(dateStr) {
 }
 
 // ─────────────────────────────────────────────
+// ★ FONCTION UTILITAIRE : Déterminer la couleur de l'étiquette
+// ─────────────────────────────────────────────
+/**
+ * Détermine la couleur d'arrière-plan d'une étiquette d'événement
+ * Règle : 
+ * - 1 seul membre → couleur du membre
+ * - Plusieurs membres → couleur famille (#4A4E69)
+ */
+function getCouleurEtiquette(ev) {
+  const membresIds = ev.membres || [ev.membre];
+  
+  // Si 1 seul membre : retourner sa couleur
+  if (membresIds.length === 1) {
+    const membre = membresAffichage.find((m) => m.id === membresIds[0]);
+    return membre?.couleur || "#4A4E69";
+  }
+  
+  // Si plusieurs membres : retourner la couleur famille
+  return "#4A4E69";
+}
+
+// ─────────────────────────────────────────────
 // ★ COMPOSANT : AvatarsMembres
 // ─────────────────────────────────────────────
 function AvatarsMembres({ membresIds = [], size = "md", showNames = false }) {
@@ -588,27 +610,39 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail, membreActif }) {
                     {jour}
                   </div>
                   <div className="space-y-0.5">
-                    {evsJour.slice(0, 3).map((ev, i) => (
-                      <button
-                        key={i}
-                        onClick={() => onOuvrirDetail(ev)}
-                        className="w-full text-left px-1.5 py-0.5 rounded text-xs font-bold truncate"
-                        style={{
-                          backgroundColor:
-                            membreActif === "famille"
-                              ? "#4A4E69"
-                              : membresAffichage.find(
-                                  (m) => m.id === membreActif,
-                                )?.couleur || "#4A4E69",
-                          color: "white",
-                        }}
-                      >
-                        {ev.heureDebut && ev.heureDebut !== "00:00"
-                          ? `${ev.heureDebut} `
-                          : ""}
-                        {ev.titre}
-                      </button>
-                    ))}
+                    {evsJour.slice(0, 3).map((ev, i) => {
+                      const membresIds = ev.membres || [ev.membre];
+                      const couleurEtiquette = getCouleurEtiquette(ev);
+                      const estMultiMembres = membresIds.length > 1;
+                      
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => onOuvrirDetail(ev)}
+                          className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
+                          style={{
+                            backgroundColor: couleurEtiquette,
+                            color: "white",
+                          }}
+                        >
+                          <div className="truncate leading-tight" style={{ fontSize: "10px" }}>
+                            {ev.heureDebut && ev.heureDebut !== "00:00"
+                              ? `${ev.heureDebut} `
+                              : ""}
+                            {ev.titre}
+                          </div>
+                          {/* Pastilles des membres si événement multi-membres */}
+                          {estMultiMembres && (
+                            <div className="flex gap-0.5 mt-0.5">
+                              <AvatarsMembres
+                                membresIds={membresIds}
+                                size="sm"
+                              />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
                     {evsJour.length > 3 && (
                       <div className="text-xs text-gray-400 px-1">
                         +{evsJour.length - 3}
@@ -721,34 +755,39 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail, membreActif }) {
                     —
                   </div>
                 )}
-                {evs.map((ev, i) => (
-                  <button
-                    key={i}
-                    onClick={() => onOuvrirDetail(ev)}
-                    className="w-full text-left px-1.5 py-0.5 rounded text-xs font-bold truncate"
-                    style={{
-                      backgroundColor:
-                        membreActif === "famille"
-                          ? "#4A4E69"
-                          : membresAffichage.find((m) => m.id === membreActif)
-                              ?.couleur || "#4A4E69",
-                      color: "white",
-                    }}
-                  >
-                    <div
-                      className="text-grey-400 font-bold leading-tight truncate"
-                      style={{ fontSize: "10px" }}
+                {evs.map((ev, i) => {
+                  const membresIds = ev.membres || [ev.membre];
+                  const couleurEtiquette = getCouleurEtiquette(ev);
+                  const estMultiMembres = membresIds.length > 1;
+                  
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => onOuvrirDetail(ev)}
+                      className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
+                      style={{
+                        backgroundColor: couleurEtiquette,
+                        color: "white",
+                      }}
                     >
-                      {ev.titre}
-                    </div>
-                    {(ev.membres || [ev.membre]).length > 1 && (
-                      <AvatarsMembres
-                        membresIds={ev.membres || [ev.membre]}
-                        size="sm"
-                      />
-                    )}
-                  </button>
-                ))}
+                      <div
+                        className="truncate leading-tight"
+                        style={{ fontSize: "10px" }}
+                      >
+                        {ev.titre}
+                      </div>
+                      {/* Pastilles des membres si événement multi-membres */}
+                      {estMultiMembres && (
+                        <div className="flex gap-0.5 mt-0.5">
+                          <AvatarsMembres
+                            membresIds={membresIds}
+                            size="sm"
+                          />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );

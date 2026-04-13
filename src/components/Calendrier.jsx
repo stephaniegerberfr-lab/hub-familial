@@ -470,6 +470,71 @@ function AvatarsMembres({ membresIds = [], size = "md", showNames = false }) {
 }
 
 // ─────────────────────────────────────────────
+// ★ COMPOSANTS PARTAGÉS : étiquettes et barres d'événements
+// ─────────────────────────────────────────────
+
+/**
+ * Étiquette d'événement mono-jour — utilisée identiquement
+ * dans VueMensuelle et VueSemaine.
+ */
+function EtiquetteEvenement({ ev, onClick }) {
+  const couleurEtiquette = getCouleurEtiquette(ev);
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
+      style={{ backgroundColor: couleurEtiquette, color: "white" }}
+    >
+      <div className="truncate leading-tight" style={{ fontSize: "10px" }}>
+        {ev.titre}
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Barre d'événement multi-jours en position absolue — utilisée identiquement
+ * dans VueMensuelle et VueSemaine.
+ *
+ * Props :
+ *   ev          – objet événement
+ *   style       – objet style de positionnement (top, left, width)
+ *   hauteur     – hauteur de la barre en px (défaut 22)
+ *   onClick     – callback
+ */
+function BarreMultiJour({ ev, style, hauteur = 22, onClick }) {
+  const couleur = getCouleurEtiquette(ev);
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick(ev);
+      }}
+      className="absolute pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity"
+      style={{
+        ...style,
+        height: `${hauteur}px`,
+        backgroundColor: couleur,
+        borderRadius: "4px",
+        padding: "2px 6px",
+        fontSize: "10px",
+        fontWeight: 700,
+        color: "white",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        display: "flex",
+        alignItems: "center",
+      }}
+      title={ev.titre}
+    >
+      {ev.titre}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // ★ COMPOSANT : VueMensuelle (avec barres multi-jours)
 // ─────────────────────────────────────────────
 function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
@@ -706,13 +771,13 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
           ‹
         </button>
         <div className="flex items-center gap-2">
-          <h3 className="text-base font-bold text-gray-800 sm:text-lg">
+          <h3 className="text-lg font-bold text-gray-800">
             {MOIS_FR[moisAffiche]} {anneeAffichee}
           </h3>
           {!estMoisActuel && (
             <button
               onClick={retourMoisActuel}
-              className="rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-[10px] font-bold hover:bg-gray-200"
+              className="rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-bold hover:bg-gray-200"
             >
               Aujourd'hui
             </button>
@@ -731,7 +796,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
         {JOURS_SEMAINE.map((jour) => (
           <div
             key={jour}
-            className="text-center text-[10px] font-semibold text-gray-400 p-1 sm:text-xs"
+            className="text-center text-xs font-bold text-gray-400 p-2"
           >
             {jour}
           </div>
@@ -743,45 +808,25 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
         {/* ★ NOUVEAU : Barres multi-jours en position absolue */}
         <div className="absolute inset-0 pointer-events-none z-10">
           {evenementsMultiJours.map((ev, idx) => {
-            const couleurMembre = getCouleurEtiquette(ev);
             const positionY = positionsLignes[ev.semaine];
-            const topOffset =
+            const topPx =
               positionY != null
                 ? positionY + 24 + ev.lane * (hauteurBarre + margeEntreBarres)
-                : `calc(${ev.semaine * (80 + 4)}px + 8px + 20px + ${ev.lane * (hauteurBarre + margeEntreBarres)}px)`;
+                : null;
+            const topFallback = `calc(${ev.semaine * (80 + 4)}px + 8px + 20px + ${ev.lane * (hauteurBarre + margeEntreBarres)}px)`;
 
             return (
-              <div
+              <BarreMultiJour
                 key={`${idx}-${ev.semaine}-${ev.colDebut}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOuvrirDetail(ev);
-                }}
-                className="absolute pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity"
+                ev={ev}
+                hauteur={hauteurBarre}
+                onClick={onOuvrirDetail}
                 style={{
-                  top:
-                    typeof topOffset === "number"
-                      ? `${topOffset}px`
-                      : topOffset,
+                  top: topPx != null ? `${topPx}px` : topFallback,
                   left: `calc((100% - 24px) * ${ev.colDebut} / 7 + ${ev.colDebut * 4}px)`,
-                  width: `calc((100% - 24px) * ${ev.largeur} / 7 + ${Math.max(0, ev.largeur - 1) * 4}px - 4px)`,
-                  height: `${hauteurBarre}px`,
-                  backgroundColor: couleurMembre,
-                  borderRadius: "4px",
-                  padding: "2px 6px",
-                  fontSize: "11px",
-                  fontWeight: "700",
-                  color: "white",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  display: "flex",
-                  alignItems: "center",
+                  width: `calc((100% - 24px) * ${ev.largeur} / 7 + ${Math.max(0, ev.largeur - 1) * 4}px)`,
                 }}
-                title={ev.titre}
-              >
-                {ev.titre}
-              </div>
+              />
             );
           })}
         </div>
@@ -795,7 +840,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
             return (
               <div
                 key={index}
-                className={`min-h-[90px] md:min-h-[80px] border border-gray-100 rounded-lg p-1 ${
+                className={`min-h-[80px] border border-gray-100 rounded-lg py-1 px-0 ${
                   jour
                     ? estAujourdhui(jour)
                       ? "bg-indigo-50 border-indigo-300"
@@ -806,7 +851,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
                 {jour && (
                   <>
                     <div
-                      className={`text-sm font-semibold mb-1 ${
+                      className={`text-xs font-bold mb-1 ${
                         estAujourdhui(jour)
                           ? "text-indigo-600"
                           : "text-gray-600"
@@ -824,40 +869,15 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
                     ></div>
                     {/* Événements mono-jour */}
                     <div className="space-y-0.5">
-                      {evsAffiches.slice(0, 2).map((ev, i) => {
-                        const membresIds = ev.membres || [ev.membre];
-                        const couleurEtiquette = getCouleurEtiquette(ev);
-                        const estMultiMembres = membresIds.length > 1;
-
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => onOuvrirDetail(ev)}
-                            className="w-full text-left px-2 py-1 rounded text-[11px] font-semibold"
-                            style={{
-                              backgroundColor: couleurEtiquette,
-                              color: "white",
-                            }}
-                          >
-                            <div className="truncate leading-tight text-[11px]">
-                              {ev.heureDebut && ev.heureDebut !== "00:00"
-                                ? `${ev.heureDebut} `
-                                : ""}
-                              {ev.titre}
-                            </div>
-                            {estMultiMembres && (
-                              <div className="flex gap-0.5 mt-0.5">
-                                <AvatarsMembres
-                                  membresIds={membresIds}
-                                  size="sm"
-                                />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
+                      {evsAffiches.slice(0, 2).map((ev, i) => (
+                        <EtiquetteEvenement
+                          key={i}
+                          ev={ev}
+                          onClick={() => onOuvrirDetail(ev)}
+                        />
+                      ))}
                       {evsAffiches.length > 2 && (
-                        <div className="text-[11px] text-gray-400 px-1">
+                        <div className="text-xs text-gray-400 px-1">
                           +{evsAffiches.length - 2}
                         </div>
                       )}
@@ -1070,10 +1090,10 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 mb-3">
+      <div className="grid grid-cols-7 gap-2 mb-3">
         {joursDeLaSemaine.map((date, index) => (
           <div key={index} className="text-center">
-            <div className="text-[10px] font-semibold text-gray-500 mb-1">
+            <div className="text-xs font-bold text-gray-500 mb-1">
               {JOURS_SEMAINE[index]}
             </div>
             <div
@@ -1094,79 +1114,40 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
         style={{ minHeight: `${hauteurZoneBarres}px` }}
       >
         <div className="absolute inset-0 pointer-events-none">
-          {evenementsMultiJours.map((ev, i) => {
-            const couleurEtiquette = getCouleurEtiquette(ev);
-            return (
-              <div
-                key={`${i}-${ev.colDebut}-${ev.lane}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOuvrirDetail(ev);
-                }}
-                className="absolute pointer-events-auto cursor-pointer hover:opacity-80 transition-opacity"
-                style={{
-                  top: `${ev.lane * (hauteurBarre + margeEntreBarres)}px`,
-                  left: `calc(${(ev.colDebut / 7) * 100}% + ${ev.colDebut * 8}px - ${(48 * ev.colDebut) / 7}px)`,
-                  width: `calc(${(ev.largeur / 7) * 100}% + ${Math.max(0, ev.largeur - 1) * 8}px - ${(48 * ev.largeur) / 7}px - 4px)`,
-                  height: `${hauteurBarre}px`,
-                  backgroundColor: couleurEtiquette,
-                  borderRadius: "8px",
-                  padding: "2px 8px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  color: "white",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-                title={ev.titre}
-              >
-                {ev.titre}
-              </div>
-            );
-          })}
+          {evenementsMultiJours.map((ev, i) => (
+            <BarreMultiJour
+              key={`${i}-${ev.colDebut}-${ev.lane}`}
+              ev={ev}
+              hauteur={hauteurBarre}
+              onClick={onOuvrirDetail}
+              style={{
+                top: `${ev.lane * (hauteurBarre + margeEntreBarres)}px`,
+                left: `calc(${(ev.colDebut / 7) * 100}% + ${ev.colDebut * 8}px - ${(48 * ev.colDebut) / 7}px)`,
+                width: `calc(${(ev.largeur / 7) * 100}% + ${Math.max(0, ev.largeur - 1) * 8}px - ${(48 * ev.largeur) / 7}px)`,
+              }}
+            />
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-2">
         {joursDeLaSemaine.map((date, index) => {
           const evs = evsDuJour(date);
           return (
             <div key={index} className="flex flex-col">
               <div className="flex-1 space-y-1.5">
                 {evs.length === 0 && (
-                  <div className="text-center text-gray-300 text-[10px] py-4">
+                  <div className="text-center text-gray-300 text-xs py-4">
                     —
                   </div>
                 )}
-                {evs.map((ev, i) => {
-                  const membresIds = ev.membres || [ev.membre];
-                  const couleurEtiquette = getCouleurEtiquette(ev);
-                  const estMultiMembres = membresIds.length > 1;
-
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => onOuvrirDetail(ev)}
-                      className="w-full text-left px-2 py-1 rounded text-[11px] font-semibold"
-                      style={{
-                        backgroundColor: couleurEtiquette,
-                        color: "white",
-                      }}
-                    >
-                      <div className="truncate leading-tight text-[11px]">
-                        {ev.titre}
-                      </div>
-                      {estMultiMembres && (
-                        <div className="flex gap-0.5 mt-0.5">
-                          <AvatarsMembres membresIds={membresIds} size="sm" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+                {evs.map((ev, i) => (
+                  <EtiquetteEvenement
+                    key={i}
+                    ev={ev}
+                    onClick={() => onOuvrirDetail(ev)}
+                  />
+                ))}
               </div>
             </div>
           );

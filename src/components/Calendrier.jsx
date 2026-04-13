@@ -706,13 +706,13 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
           ‹
         </button>
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-bold text-gray-800">
+          <h3 className="text-base font-bold text-gray-800 sm:text-lg">
             {MOIS_FR[moisAffiche]} {anneeAffichee}
           </h3>
           {!estMoisActuel && (
             <button
               onClick={retourMoisActuel}
-              className="rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-xs font-bold hover:bg-gray-200"
+              className="rounded-full bg-gray-100 text-gray-700 px-3 py-1 text-[10px] font-bold hover:bg-gray-200"
             >
               Aujourd'hui
             </button>
@@ -731,7 +731,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
         {JOURS_SEMAINE.map((jour) => (
           <div
             key={jour}
-            className="text-center text-xs font-bold text-gray-400 p-2"
+            className="text-center text-[10px] font-semibold text-gray-400 p-1 sm:text-xs"
           >
             {jour}
           </div>
@@ -769,7 +769,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
                   backgroundColor: couleurMembre,
                   borderRadius: "4px",
                   padding: "2px 6px",
-                  fontSize: "10px",
+                  fontSize: "11px",
                   fontWeight: "700",
                   color: "white",
                   overflow: "hidden",
@@ -795,7 +795,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
             return (
               <div
                 key={index}
-                className={`min-h-[80px] border border-gray-100 rounded-lg p-1 ${
+                className={`min-h-[90px] md:min-h-[80px] border border-gray-100 rounded-lg p-1 ${
                   jour
                     ? estAujourdhui(jour)
                       ? "bg-indigo-50 border-indigo-300"
@@ -806,7 +806,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
                 {jour && (
                   <>
                     <div
-                      className={`text-xs font-bold mb-1 ${
+                      className={`text-sm font-semibold mb-1 ${
                         estAujourdhui(jour)
                           ? "text-indigo-600"
                           : "text-gray-600"
@@ -833,16 +833,13 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
                           <button
                             key={i}
                             onClick={() => onOuvrirDetail(ev)}
-                            className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
+                            className="w-full text-left px-2 py-1 rounded text-[11px] font-semibold"
                             style={{
                               backgroundColor: couleurEtiquette,
                               color: "white",
                             }}
                           >
-                            <div
-                              className="truncate leading-tight"
-                              style={{ fontSize: "10px" }}
-                            >
+                            <div className="truncate leading-tight text-[11px]">
                               {ev.heureDebut && ev.heureDebut !== "00:00"
                                 ? `${ev.heureDebut} `
                                 : ""}
@@ -860,7 +857,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
                         );
                       })}
                       {evsAffiches.length > 2 && (
-                        <div className="text-xs text-gray-400 px-1">
+                        <div className="text-[11px] text-gray-400 px-1">
                           +{evsAffiches.length - 2}
                         </div>
                       )}
@@ -1073,10 +1070,10 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-3">
+      <div className="grid grid-cols-7 gap-1 mb-3">
         {joursDeLaSemaine.map((date, index) => (
           <div key={index} className="text-center">
-            <div className="text-xs font-bold text-gray-500 mb-1">
+            <div className="text-[10px] font-semibold text-gray-500 mb-1">
               {JOURS_SEMAINE[index]}
             </div>
             <div
@@ -1115,7 +1112,7 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
                   backgroundColor: couleurEtiquette,
                   borderRadius: "8px",
                   padding: "2px 8px",
-                  fontSize: "10px",
+                  fontSize: "11px",
                   fontWeight: 700,
                   color: "white",
                   overflow: "hidden",
@@ -1133,14 +1130,14 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1">
         {joursDeLaSemaine.map((date, index) => {
           const evs = evsDuJour(date);
           return (
             <div key={index} className="flex flex-col">
               <div className="flex-1 space-y-1.5">
                 {evs.length === 0 && (
-                  <div className="text-center text-gray-300 text-xs py-4">
+                  <div className="text-center text-gray-300 text-[10px] py-4">
                     —
                   </div>
                 )}
@@ -1153,16 +1150,13 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
                     <button
                       key={i}
                       onClick={() => onOuvrirDetail(ev)}
-                      className="w-full text-left px-1.5 py-1 rounded text-xs font-bold"
+                      className="w-full text-left px-2 py-1 rounded text-[11px] font-semibold"
                       style={{
                         backgroundColor: couleurEtiquette,
                         color: "white",
                       }}
                     >
-                      <div
-                        className="truncate leading-tight"
-                        style={{ fontSize: "10px" }}
-                      >
+                      <div className="truncate leading-tight text-[11px]">
                         {ev.titre}
                       </div>
                       {estMultiMembres && (

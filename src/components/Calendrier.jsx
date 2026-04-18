@@ -307,8 +307,7 @@ function genererDatesRecurrencePersonnalisee(
     if (finDate && current > finDate) break;
 
     // Ajouter la date
-    const dateStr = current.toISOString().split("T")[0];
-    dates.push(dateStr);
+    dates.push(formatDateLocale(current));
     count++;
 
     // Sécurité : empêcher boucle infinie
@@ -388,7 +387,7 @@ function genererDatesRecurrence(dateDebut, recurrence, dateFin) {
   let current = new Date(debut);
   let count = 0;
   while (count < 365) {
-    dates.push(current.toISOString().split("T")[0]);
+    dates.push(formatDateLocale(current));
     if (recurrence === "quotidien") current.setDate(current.getDate() + 1);
     else if (recurrence === "hebdomadaire")
       current.setDate(current.getDate() + 7);
@@ -407,6 +406,13 @@ function urlMaps(adresse) {
     "https://www.google.com/maps/search/?api=1&query=" +
     encodeURIComponent(adresse)
   );
+}
+
+function formatDateLocale(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function parseDateLocale(dateStr) {
@@ -619,12 +625,11 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
   const evenementsMultiJoursMap = new Map();
 
   evenementsFiltres.forEach((ev) => {
-    const dateDebut = new Date(ev.date);
-    const dateFin = ev.dateFin ? new Date(ev.dateFin) : dateDebut;
+    const dateDebut = parseDateLocale(ev.date);
+    const dateFin = ev.dateFin ? parseDateLocale(ev.dateFin) : dateDebut;
 
     const estMultiJour =
-      dateFin.toISOString().split("T")[0] !==
-      dateDebut.toISOString().split("T")[0];
+      formatDateLocale(dateFin) !== formatDateLocale(dateDebut);
 
     if (estMultiJour) {
       const cle = `${ev.titre}__${ev.date}__${ev.dateFin || ev.date}__${ev.heureDebut || ""}__${ev.serieId || ""}`;
@@ -663,8 +668,8 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
   });
 
   Array.from(evenementsMultiJoursMap.values()).forEach((ev) => {
-    const dateDebut = new Date(ev.date);
-    const dateFin = ev.dateFin ? new Date(ev.dateFin) : dateDebut;
+    const dateDebut = parseDateLocale(ev.date);
+    const dateFin = ev.dateFin ? parseDateLocale(ev.dateFin) : dateDebut;
 
     const jourDebut = dateDebut.getDate();
     const jourFin = dateFin.getDate();
@@ -894,7 +899,7 @@ function VueMensuelle({ evenementsFiltres, onOuvrirDetail }) {
 }
 
 // ─────────────────────────────────────────────
-// ★ COMPOSANT : VueSemaine
+// ★ COMPOSANT : VueSemaine (planning horaire)
 // ─────────────────────────────────────────────
 function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
   const [debutSemaine, setDebutSemaine] = useState(() => {
@@ -905,6 +910,17 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
     return d;
   });
 
+  const scrollRef = useRef(null);
+  const HAUTEUR_HEURE = 60; // px par heure
+  const HEURES = Array.from({ length: 24 }, (_, i) => i);
+
+  // Scroll vers 7h au montage
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 7 * HAUTEUR_HEURE;
+    }
+  }, []);
+
   const debutSemaineAujourdhui = (() => {
     const d = new Date();
     const jour = d.getDay();
@@ -913,10 +929,8 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
     return d;
   })();
 
-  const retourSemaineActuelle = () => {
+  const retourSemaineActuelle = () =>
     setDebutSemaine(new Date(debutSemaineAujourdhui));
-  };
-
   const estSemaineActuelle =
     debutSemaine.toDateString() === debutSemaineAujourdhui.toDateString();
 
@@ -938,13 +952,21 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
     return jour;
   });
 
-  const dateToKey = (date) => date.toISOString().split("T")[0];
-
+  const dateToKey = (date) => formatDateLocale(date);
   const dateDebutSemaine = parseDateLocale(dateToKey(joursDeLaSemaine[0]));
   const dateFinSemaine = parseDateLocale(dateToKey(joursDeLaSemaine[6]));
 
-  const evenementsMonoJour = {};
+  // Convertit "HH:MM" en minutes depuis minuit
+  const timeToMinutes = (timeStr) => {
+    if (!timeStr || timeStr === "00:00") return 0;
+    const [h, m] = timeStr.split(":").map(Number);
+    return h * 60 + (m || 0);
+  };
+
+  // ── Classification des événements ──────────────────────
   const evenementsMultiJoursMap = new Map();
+  const evenementsMonoJourAllDay = {}; // touteLaJournee ou sans heure
+  const evenementsMonoJourTimed = {}; // avec heureDebut définie
 
   evenementsFiltres.forEach((ev) => {
     const dateDebut = parseDateLocale(ev.date);
@@ -956,23 +978,16 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
       dateFin >= dateDebutSemaine &&
       dateDebut <= dateFinSemaine
     ) {
-      const cle = `${ev.titre}__${ev.date}__${ev.dateFin || ev.date}__${
-        ev.heureDebut || ""
-      }__${ev.serieId || ""}`;
+      const cle = `${ev.titre}__${ev.date}__${ev.dateFin || ev.date}__${ev.heureDebut || ""}__${ev.serieId || ""}`;
       const membresIds = ev.membres || [ev.membre];
       const ids = ev.ids || [ev.id];
-
       if (evenementsMultiJoursMap.has(cle)) {
         const existant = evenementsMultiJoursMap.get(cle);
-        membresIds.forEach((membreId) => {
-          if (membreId && !existant.membres.includes(membreId)) {
-            existant.membres.push(membreId);
-          }
+        membresIds.forEach((m) => {
+          if (m && !existant.membres.includes(m)) existant.membres.push(m);
         });
         ids.forEach((id) => {
-          if (!existant.ids.includes(id)) {
-            existant.ids.push(id);
-          }
+          if (!existant.ids.includes(id)) existant.ids.push(id);
         });
       } else {
         evenementsMultiJoursMap.set(cle, {
@@ -987,11 +1002,19 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
       dateDebut <= dateFinSemaine
     ) {
       const key = dateToKey(dateDebut);
-      if (!evenementsMonoJour[key]) evenementsMonoJour[key] = [];
-      evenementsMonoJour[key].push(ev);
+      const estTimed =
+        ev.heureDebut && ev.heureDebut !== "00:00" && !ev.touteLaJournee;
+      if (estTimed) {
+        if (!evenementsMonoJourTimed[key]) evenementsMonoJourTimed[key] = [];
+        evenementsMonoJourTimed[key].push(ev);
+      } else {
+        if (!evenementsMonoJourAllDay[key]) evenementsMonoJourAllDay[key] = [];
+        evenementsMonoJourAllDay[key].push(ev);
+      }
     }
   });
 
+  // ── Calcul des lanes pour barres multi-jours ──────────
   const evenementsMultiJours = [];
   const lanes = [];
   const hauteurBarre = 22;
@@ -1013,27 +1036,15 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
     );
     const largeur = colFin - colDebut + 1;
 
-    let laneIdx = lanes.findIndex((lane) => {
-      return Array.from({ length: largeur }).every(
-        (_, idx) => !lane[colDebut + idx],
-      );
-    });
-
+    let laneIdx = lanes.findIndex((lane) =>
+      Array.from({ length: largeur }).every((_, idx) => !lane[colDebut + idx]),
+    );
     if (laneIdx === -1) {
       laneIdx = lanes.length;
       lanes.push(Array(7).fill(false));
     }
-
-    for (let col = colDebut; col <= colFin; col++) {
-      lanes[laneIdx][col] = true;
-    }
-
-    evenementsMultiJours.push({
-      ...ev,
-      colDebut,
-      largeur,
-      lane: laneIdx,
-    });
+    for (let col = colDebut; col <= colFin; col++) lanes[laneIdx][col] = true;
+    evenementsMultiJours.push({ ...ev, colDebut, largeur, lane: laneIdx });
   });
 
   const hauteurZoneBarres =
@@ -1042,18 +1053,72 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
         Math.max(0, lanes.length - 1) * margeEntreBarres
       : 0;
 
-  const evsDuJour = (date) => {
-    const dateStr = dateToKey(date);
-    return regrouperEvenements(evenementsMonoJour[dateStr] || []);
-  };
+  // Hauteur pour les événements all-day mono-jour (sous les barres)
+  const maxAllDayParJour = joursDeLaSemaine.reduce((max, date) => {
+    const evs = regrouperEvenements(
+      evenementsMonoJourAllDay[dateToKey(date)] || [],
+    );
+    return Math.max(max, evs.length);
+  }, 0);
+  const hauteurZoneAllDaySingle =
+    maxAllDayParJour > 0
+      ? maxAllDayParJour * (hauteurBarre + margeEntreBarres)
+      : 0;
+  const hauteurZoneTotale = hauteurZoneBarres + hauteurZoneAllDaySingle;
+
+  // Vérifie s'il y a des événements all-day à afficher
+  const aDesEvenementsAllDay =
+    evenementsMultiJours.length > 0 ||
+    joursDeLaSemaine.some(
+      (d) => (evenementsMonoJourAllDay[dateToKey(d)] || []).length > 0,
+    );
 
   const estAujourdhui = (date) => {
     const aujourdhui = new Date();
     return date.toDateString() === aujourdhui.toDateString();
   };
 
+  // ── Gestion des chevauchements pour événements horaires ──
+  function assignerColonnes(evs) {
+    if (!evs || evs.length === 0) return [];
+    const sorted = [...evs].sort(
+      (a, b) => timeToMinutes(a.heureDebut) - timeToMinutes(b.heureDebut),
+    );
+    const colonnes = [];
+    const result = sorted.map((ev) => {
+      const start = timeToMinutes(ev.heureDebut);
+      const end =
+        ev.heureFin && ev.heureFin !== "00:00"
+          ? timeToMinutes(ev.heureFin)
+          : start + 60;
+      let colIdx = colonnes.findIndex((endTime) => endTime <= start);
+      if (colIdx === -1) {
+        colIdx = colonnes.length;
+        colonnes.push(end);
+      } else colonnes[colIdx] = end;
+      return { ...ev, _col: colIdx, _end: end };
+    });
+    return result.map((ev) => {
+      const start = timeToMinutes(ev.heureDebut);
+      const overlapping = result.filter(
+        (o) => o._end > start && timeToMinutes(o.heureDebut) < ev._end,
+      );
+      const totalCols = Math.max(...overlapping.map((o) => o._col)) + 1;
+      return { ...ev, _totalCols: totalCols };
+    });
+  }
+
+  // ── Indicateur de l'heure courante ──────────────────────
+  const maintenant = new Date();
+  const minutesMaintenant =
+    maintenant.getHours() * 60 + maintenant.getMinutes();
+  const topMaintenant = (minutesMaintenant / 60) * HAUTEUR_HEURE;
+  const estSemaineCourante = joursDeLaSemaine.some((d) => estAujourdhui(d));
+  const colAujourdhui = joursDeLaSemaine.findIndex((d) => estAujourdhui(d));
+
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-4">
+      {/* ── Navigation ── */}
       <div className="flex items-center justify-between mb-3">
         <button
           onClick={semainePrecedente}
@@ -1066,8 +1131,8 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
             {joursDeLaSemaine[0].toLocaleDateString("fr-FR", {
               day: "numeric",
               month: "short",
-            })}{" "}
-            -{" "}
+            })}
+            {" — "}
             {joursDeLaSemaine[6].toLocaleDateString("fr-FR", {
               day: "numeric",
               month: "short",
@@ -1090,75 +1155,296 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-3">
-        {joursDeLaSemaine.map((date, index) => (
-          <div key={index} className="text-center">
-            <div className="text-xs font-bold text-gray-500 mb-1">
-              {JOURS_SEMAINE[index]}
-            </div>
+      {/* ── Conteneur principal avec bordure ── */}
+      <div className="border border-gray-100 rounded-xl overflow-hidden">
+        {/* ── En-têtes des jours ── */}
+        <div className="flex border-b border-gray-100 bg-white sticky top-0 z-20">
+          {/* Coin labels heures */}
+          <div
+            className="flex-shrink-0 flex items-end justify-end pb-1.5 pr-2"
+            style={{ width: "48px" }}
+          >
+            <span className="text-xs text-gray-400 leading-none">GMT+02</span>
+          </div>
+          {/* Colonnes jours */}
+          <div className="flex-1 grid grid-cols-7">
+            {joursDeLaSemaine.map((date, index) => (
+              <div
+                key={index}
+                className={`text-center py-2 ${index > 0 ? "border-l border-gray-100" : ""}`}
+              >
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">
+                  {JOURS_SEMAINE[index]}
+                </div>
+                <div
+                  className={`text-base font-bold w-8 h-8 mx-auto flex items-center justify-center rounded-full transition-colors ${
+                    estAujourdhui(date)
+                      ? "bg-indigo-600 text-white"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  {date.getDate()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Zone événements "Toute la journée" ── */}
+        <div
+          className={`flex border-b border-gray-100 bg-gray-50 ${!aDesEvenementsAllDay ? "hidden" : ""}`}
+        >
+          <div
+            className="flex-shrink-0 flex items-start justify-end pt-1.5 pr-2"
+            style={{ width: "48px" }}
+          >
+            <span className="text-xs text-gray-400 leading-tight text-right">
+              Tout
+              <br />
+              le jour
+            </span>
+          </div>
+          <div
+            className="flex-1 relative"
+            style={{
+              minHeight: `${Math.max(hauteurZoneTotale + 8, aDesEvenementsAllDay ? 30 : 0)}px`,
+            }}
+          >
+            {/* Barres multi-jours */}
+            {evenementsMultiJours.map((ev, i) => (
+              <BarreMultiJour
+                key={`${i}-${ev.colDebut}-${ev.lane}`}
+                ev={ev}
+                hauteur={hauteurBarre}
+                onClick={onOuvrirDetail}
+                style={{
+                  top: `${4 + ev.lane * (hauteurBarre + margeEntreBarres)}px`,
+                  left: `calc(${(ev.colDebut / 7) * 100}% + 1px)`,
+                  width: `calc(${(ev.largeur / 7) * 100}% - 3px)`,
+                  zIndex: 5,
+                }}
+              />
+            ))}
+            {/* Événements all-day mono-jour */}
+            {joursDeLaSemaine.map((date, colIndex) => {
+              const evs = regrouperEvenements(
+                evenementsMonoJourAllDay[dateToKey(date)] || [],
+              );
+              return evs.map((ev, i) => (
+                <div
+                  key={`allday-${colIndex}-${i}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOuvrirDetail(ev);
+                  }}
+                  className="absolute cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{
+                    top: `${4 + hauteurZoneBarres + (hauteurZoneBarres > 0 ? margeEntreBarres : 0) + i * (hauteurBarre + margeEntreBarres)}px`,
+                    left: `calc(${(colIndex / 7) * 100}% + 1px)`,
+                    width: `calc(${(1 / 7) * 100}% - 3px)`,
+                    height: `${hauteurBarre}px`,
+                    backgroundColor: getCouleurEtiquette(ev),
+                    borderRadius: "4px",
+                    padding: "2px 6px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
+                    textOverflow: "ellipsis",
+                    zIndex: 5,
+                  }}
+                  title={ev.titre}
+                >
+                  {ev.titre}
+                </div>
+              ));
+            })}
+          </div>
+        </div>
+
+        {/* ── Grille horaire scrollable ── */}
+        <div
+          ref={scrollRef}
+          className="overflow-y-auto"
+          style={{ maxHeight: "480px" }}
+        >
+          <div className="flex" style={{ height: `${24 * HAUTEUR_HEURE}px` }}>
+            {/* Colonne des labels d'heures */}
             <div
-              className={`text-lg font-bold w-8 h-8 mx-auto flex items-center justify-center rounded-full ${
-                estAujourdhui(date)
-                  ? "bg-indigo-600 text-white"
-                  : "text-gray-700"
-              }`}
+              className="flex-shrink-0 relative bg-white"
+              style={{ width: "48px" }}
             >
-              {date.getDate()}
+              {HEURES.map((h) => (
+                <div
+                  key={h}
+                  className="absolute w-full"
+                  style={{
+                    top: `${h * HAUTEUR_HEURE}px`,
+                    height: `${HAUTEUR_HEURE}px`,
+                  }}
+                >
+                  {h > 0 && (
+                    <span
+                      className="absolute right-2 text-xs text-gray-400 whitespace-nowrap"
+                      style={{ top: "-9px" }}
+                    >
+                      {String(h).padStart(2, "0")}:00
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Zone des colonnes jours */}
+            <div className="flex-1 relative">
+              {/* Lignes horizontales (heures entières) */}
+              {HEURES.map((h) => (
+                <div
+                  key={`line-${h}`}
+                  className="absolute w-full pointer-events-none"
+                  style={{
+                    top: `${h * HAUTEUR_HEURE}px`,
+                    borderTop: `1px solid ${h === 0 ? "transparent" : "#f3f4f6"}`,
+                  }}
+                />
+              ))}
+
+              {/* Lignes des demi-heures (pointillées) */}
+              {HEURES.map((h) => (
+                <div
+                  key={`half-${h}`}
+                  className="absolute w-full pointer-events-none"
+                  style={{
+                    top: `${h * HAUTEUR_HEURE + 30}px`,
+                    borderTop: "1px dashed #f3f4f6",
+                  }}
+                />
+              ))}
+
+              {/* Fonds de colonnes + séparateurs verticaux */}
+              {joursDeLaSemaine.map((date, i) => (
+                <div
+                  key={`col-bg-${i}`}
+                  className="absolute top-0 bottom-0 pointer-events-none"
+                  style={{
+                    left: `${(i / 7) * 100}%`,
+                    width: `${(1 / 7) * 100}%`,
+                    backgroundColor: estAujourdhui(date)
+                      ? "rgba(238,242,255,0.35)"
+                      : "transparent",
+                    borderLeft: i > 0 ? "1px solid #f3f4f6" : "none",
+                  }}
+                />
+              ))}
+
+              {/* Indicateur heure courante */}
+              {estSemaineCourante && colAujourdhui >= 0 && (
+                <div
+                  className="absolute pointer-events-none z-10"
+                  style={{
+                    top: `${topMaintenant}px`,
+                    left: `${(colAujourdhui / 7) * 100}%`,
+                    width: `${(1 / 7) * 100}%`,
+                  }}
+                >
+                  <div className="relative flex items-center">
+                    <div
+                      className="absolute rounded-full bg-indigo-500"
+                      style={{
+                        width: "8px",
+                        height: "8px",
+                        left: "-4px",
+                        top: "-4px",
+                      }}
+                    />
+                    <div
+                      className="w-full"
+                      style={{ borderTop: "2px solid #6366f1" }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ── Événements horaires ── */}
+              {joursDeLaSemaine.map((date, colIndex) => {
+                const key = dateToKey(date);
+                const evsBruts = regrouperEvenements(
+                  evenementsMonoJourTimed[key] || [],
+                );
+                const evs = assignerColonnes(evsBruts);
+                const colWidthPct = 100 / 7;
+
+                return evs.map((ev, i) => {
+                  const startMin = timeToMinutes(ev.heureDebut);
+                  const endMin =
+                    ev.heureFin && ev.heureFin !== "00:00"
+                      ? timeToMinutes(ev.heureFin)
+                      : startMin + 60;
+                  const duration = Math.max(endMin - startMin, 15);
+                  const top = (startMin / 60) * HAUTEUR_HEURE;
+                  const height = Math.max((duration / 60) * HAUTEUR_HEURE, 22);
+                  const couleur = getCouleurEtiquette(ev);
+                  const evWidthPct = colWidthPct / (ev._totalCols || 1);
+                  const leftPct = colIndex * colWidthPct + ev._col * evWidthPct;
+
+                  return (
+                    <div
+                      key={`timed-${colIndex}-${i}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOuvrirDetail(ev);
+                      }}
+                      className="absolute cursor-pointer hover:opacity-80 transition-opacity overflow-hidden"
+                      style={{
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        left: `calc(${leftPct}% + 2px)`,
+                        width: `calc(${evWidthPct}% - 4px)`,
+                        backgroundColor: couleur,
+                        borderRadius: "4px",
+                        padding: "2px 5px",
+                        zIndex: 5,
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
+                      }}
+                      title={`${ev.titre}${ev.heureDebut ? ` — ${ev.heureDebut}` : ""}${ev.heureFin ? ` → ${ev.heureFin}` : ""}`}
+                    >
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          color: "white",
+                          lineHeight: 1.3,
+                          overflow: "hidden",
+                          display: "-webkit-box",
+                          WebkitLineClamp: height > 36 ? 2 : 1,
+                          WebkitBoxOrient: "vertical",
+                        }}
+                      >
+                        {ev.titre}
+                      </div>
+                      {height > 32 && (
+                        <div
+                          style={{
+                            fontSize: "9px",
+                            color: "rgba(255,255,255,0.88)",
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {ev.heureDebut}
+                          {ev.heureFin ? ` → ${ev.heureFin}` : ""}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })}
             </div>
           </div>
-        ))}
-      </div>
-
-      <div
-        className="relative mb-3"
-        style={{ minHeight: `${hauteurZoneBarres}px` }}
-      >
-        <div className="absolute inset-0 pointer-events-none">
-          {evenementsMultiJours.map((ev, i) => (
-            <BarreMultiJour
-              key={`${i}-${ev.colDebut}-${ev.lane}`}
-              ev={ev}
-              hauteur={hauteurBarre}
-              onClick={onOuvrirDetail}
-              style={{
-                top: `${ev.lane * (hauteurBarre + margeEntreBarres)}px`,
-                left: `calc(${(ev.colDebut / 7) * 100}% + ${ev.colDebut * 8}px - ${(48 * ev.colDebut) / 7}px)`,
-                width: `calc(${(ev.largeur / 7) * 100}% + ${Math.max(0, ev.largeur - 1) * 8}px - ${(48 * ev.largeur) / 7}px)`,
-              }}
-            />
-          ))}
         </div>
       </div>
-
-      <div className="grid grid-cols-7 gap-2">
-        {joursDeLaSemaine.map((date, index) => {
-          const evs = evsDuJour(date);
-          return (
-            <div key={index} className="flex flex-col">
-              <div className="flex-1 space-y-1.5">
-                {evs.length === 0 && (
-                  <div className="text-center text-gray-300 text-xs py-4">
-                    —
-                  </div>
-                )}
-                {evs.map((ev, i) => (
-                  <EtiquetteEvenement
-                    key={i}
-                    ev={ev}
-                    onClick={() => onOuvrirDetail(ev)}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {joursDeLaSemaine.every((d) => evsDuJour(d).length === 0) && (
-        <div className="text-center text-gray-400 py-6 text-sm mt-2">
-          Aucun événement cette semaine
-        </div>
-      )}
     </div>
   );
 }

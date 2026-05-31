@@ -19,7 +19,7 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
 } from "firebase/auth";
-import { auth } from "../firebase"; // ⚠️ Vérifie que ce chemin correspond bien à ton fichier firebase.js
+import { auth } from "./firebase"; // ⚠️ Vérifie que ce chemin correspond bien à ton fichier firebase.js
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 

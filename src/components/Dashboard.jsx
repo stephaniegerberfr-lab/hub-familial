@@ -22,9 +22,9 @@ function Dashboard({ membreActif }) {
   const [taches, setTaches] = useState([]);
   const [chargement, setChargement] = useState(true);
 
-  const aujourdhui = new Date().toISOString().split("T")[0];
-
   useEffect(() => {
+    const aujourdhui = new Date().toISOString().split("T")[0];
+
     const unsubEv = onSnapshot(collection(db, "evenements"), (snapshot) => {
       const data = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -88,9 +88,9 @@ function Dashboard({ membreActif }) {
   const afficherPoints = enfantsAfficher.length > 0;
 
   return (
-    <div className="p-6 grid grid-cols-2 gap-6">
+    <div className="p-4 sm:p-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
       {/* Colonne gauche — Événements du jour */}
-      <div className="bg-white rounded-2xl shadow-sm p-5">
+      <div className="bg-white rounded-2xl shadow-sm p-5 w-full">
         <h2 className="text-lg font-bold text-gray-800 mb-4">📅 Aujourd'hui</h2>
 
         {chargement && <p className="text-gray-400 text-sm">Chargement...</p>}
@@ -106,15 +106,17 @@ function Dashboard({ membreActif }) {
           {evenementsFiltres.map((ev) => (
             <div
               key={ev.id}
-              className="flex items-center gap-3 p-3 rounded-xl bg-gray-50"
+              className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-xl bg-gray-50 w-full min-w-0"
             >
               <div
                 className="w-10 h-10 rounded-full flex-shrink-0"
                 style={{ backgroundColor: couleurMembre(ev.membre) }}
               />
-              <div>
-                <p className="font-bold text-gray-800 text-sm">{ev.titre}</p>
-                <p className="text-gray-400 text-xs">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-gray-800 text-sm truncate">
+                  {ev.titre}
+                </p>
+                <p className="text-gray-400 text-xs truncate">
                   {ev.heure} · {nomMembre(ev.membre)}
                 </p>
               </div>
@@ -141,24 +143,24 @@ function Dashboard({ membreActif }) {
             {tachesFiltrees.map((tache) => (
               <div
                 key={tache.id}
-                className="flex items-center gap-3 p-3 rounded-xl bg-gray-50"
+                className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-xl bg-gray-50 w-full min-w-0"
               >
                 <div
                   className="w-10 h-10 rounded-full flex-shrink-0"
                   style={{ backgroundColor: couleurMembre(tache.membre) }}
                 />
-                <div className="flex-1">
-                  <p className="font-bold text-gray-800 text-sm">
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-800 text-sm truncate">
                     {tache.titre}
                   </p>
-                  <p className="text-gray-400 text-xs">
+                  <p className="text-gray-400 text-xs truncate">
                     {nomMembre(tache.membre)}
                     {tache.points > 0 && ` · ⭐ ${tache.points} pts`}
                   </p>
                 </div>
                 <button
                   onClick={() => cocherTache(tache.id, tache.faite)}
-                  className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-lg hover:bg-emerald-600"
+                  className="w-full sm:w-auto text-center bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-emerald-600"
                 >
                   ✓ Fait
                 </button>
@@ -176,7 +178,7 @@ function Dashboard({ membreActif }) {
             {enfantsAfficher.length === 1 ? "Mes points" : "Points des enfants"}
           </h2>
           <div
-            className={`grid gap-4 ${enfantsAfficher.length === 1 ? "grid-cols-1 max-w-xs" : "grid-cols-3"}`}
+            className={`grid gap-4 ${enfantsAfficher.length === 1 ? "grid-cols-1 max-w-xs" : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"}`}
           >
             {enfantsAfficher.map((enfant) => {
               const pts = pointsEnfant(enfant.id);

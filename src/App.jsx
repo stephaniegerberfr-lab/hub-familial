@@ -22,26 +22,28 @@ function App() {
         />
 
         {/* Barre de navigation */}
-        <nav className="bg-white border-b border-gray-200 px-6 flex gap-1">
-          {[
-            { id: "accueil", label: "🏠 Accueil" },
-            { id: "calendrier", label: "📅 Calendrier" },
-            { id: "courses", label: "🛒 Courses" },
-            { id: "taches", label: "✅ Tâches" },
-            { id: "parametres", label: "⚙️ Paramètres" },
-          ].map((onglet) => (
-            <button
-              key={onglet.id}
-              onClick={() => setOngletActif(onglet.id)}
-              className={`px-5 py-3 text-sm font-bold border-b-2 transition-all ${
-                ongletActif === onglet.id
-                  ? "border-indigo-600 text-indigo-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {onglet.label}
-            </button>
-          ))}
+        <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 overflow-x-auto">
+          <div className="flex gap-1 min-w-max whitespace-nowrap">
+            {[
+              { id: "accueil", label: "🏠 Accueil" },
+              { id: "calendrier", label: "📅 Calendrier" },
+              { id: "courses", label: "🛒 Courses" },
+              { id: "taches", label: "✅ Tâches" },
+              { id: "parametres", label: "⚙️ Paramètres" },
+            ].map((onglet) => (
+              <button
+                key={onglet.id}
+                onClick={() => setOngletActif(onglet.id)}
+                className={`flex-shrink-0 px-4 sm:px-5 py-3 text-sm font-bold border-b-2 transition-all ${
+                  ongletActif === onglet.id
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {onglet.label}
+              </button>
+            ))}
+          </div>
         </nav>
 
         {/* Contenu selon l'onglet actif */}

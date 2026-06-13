@@ -3,8 +3,9 @@
 // Page de connexion HOMY.
 // Affichée quand l'utilisateur n'est pas connecté à Firebase Auth.
 //
-//  - Sur tablette : apparaît seulement au tout premier usage ou après déconnexion.
-//  - Sur mobile   : apparaît à chaque nouvelle session navigateur.
+// Détection automatique du type d'appareil : PC, tablette ou téléphone.
+// Les sessions PC/tablette sont considérées comme permanentes (1 an),
+// les sessions téléphone comme temporaires (1 mois).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from "react";
@@ -18,8 +19,9 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Détecte le type d'appareil pour adapter le message
-  const isTablet = getDeviceType() === DeviceType.TABLET;
+  const deviceType = getDeviceType();
+  const isTablet = deviceType === DeviceType.TABLET;
+  const isDesktop = deviceType === DeviceType.DESKTOP;
 
   const handleGoogleSignIn = async () => {
     if (loading) return;
@@ -87,9 +89,9 @@ export default function Login() {
           </h2>
 
           <p className="text-slate-400 text-sm text-center mt-2 mb-7">
-            {isTablet
-              ? "Connectez-vous pour accéder à votre espace familial."
-              : "Identifiez-vous pour accéder à vos données."}
+            {isTablet || isDesktop
+              ? "Un accès simplifié : votre session reste valide 1 an."
+              : "Connexion temporaire : votre session reste valide 1 mois."}
           </p>
 
           {/* ── Message d'erreur ─────────────────────────────────────────── */}
@@ -152,7 +154,11 @@ export default function Login() {
 
       {/* Indicateur du type d'appareil (discret) */}
       <p className="mt-6 text-xs text-slate-300 flex items-center gap-1.5">
-        {isTablet ? "🖥️ Mode tablette" : "📱 Mode téléphone"}
+        {isDesktop
+          ? "💻 Mode PC"
+          : isTablet
+            ? "🖥️ Mode tablette"
+            : "📱 Mode téléphone"}
       </p>
     </div>
   );

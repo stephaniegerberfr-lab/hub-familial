@@ -914,10 +914,10 @@ function VueSemaine({ evenementsFiltres, onOuvrirDetail }) {
   const HAUTEUR_HEURE = 60; // px par heure
   const HEURES = Array.from({ length: 24 }, (_, i) => i);
 
-  // Scroll vers 7h au montage
+  // Scroll vers 8h au montage
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = 7 * HAUTEUR_HEURE;
+      scrollRef.current.scrollTop = 8 * HAUTEUR_HEURE;
     }
   }, []);
 
@@ -1709,6 +1709,15 @@ function Calendrier({ membreActif }) {
     evenementsParDate[date] = regrouperEvenements(evenementsParDate[date]);
   });
 
+  const aujourdhuiDateStr = formatDateLocale(new Date());
+  const evenementsParDateListe = Object.keys(evenementsParDate)
+    .filter((date) => date >= aujourdhuiDateStr)
+    .sort()
+    .reduce((acc, date) => {
+      acc[date] = evenementsParDate[date];
+      return acc;
+    }, {});
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {/* En-tête */}
@@ -2181,94 +2190,94 @@ function Calendrier({ membreActif }) {
       {/* Vue LISTE */}
       {!chargement && vue === "liste" && (
         <>
-          {Object.keys(evenementsParDate)
-            .sort()
-            .map((dateStr) => (
-              <div key={dateStr} className="mb-4">
-                <p className="text-xs font-bold text-gray-400 capitalize mb-2">
-                  {formatDate(dateStr)}
-                </p>
-                <div className="flex flex-col gap-2">
-                  {evenementsParDate[dateStr].map((ev, i) => {
-                    const estFamille = membreActif === "famille";
-                    return estFamille ? (
+          {Object.keys(evenementsParDateListe).map((dateStr) => (
+            <div key={dateStr} className="mb-4">
+              <p className="text-xs font-bold text-gray-400 capitalize mb-2">
+                {formatDate(dateStr)}
+              </p>
+              <div className="flex flex-col gap-2">
+                {evenementsParDate[dateStr].map((ev, i) => {
+                  const estFamille = membreActif === "famille";
+                  return estFamille ? (
+                    <div
+                      key={i}
+                      onClick={() => setEvenementDetail(ev)}
+                      className="bg-white rounded-2xl shadow-sm p-4 flex items-start gap-3 cursor-pointer hover:shadow-md transition-all"
+                    >
                       <div
-                        key={i}
-                        onClick={() => setEvenementDetail(ev)}
-                        className="bg-white rounded-2xl shadow-sm p-4 flex items-start gap-3 cursor-pointer hover:shadow-md transition-all"
-                      >
-                        <div
-                          className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5"
-                          style={{ backgroundColor: "#4A4E69" }}
-                        />
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800 text-sm">
-                            {ev.titre}
-                          </p>
-                          <p className="text-gray-400 text-xs mb-1.5">
-                            {ev.heureDebut && ev.heureDebut !== "00:00"
-                              ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
-                              : ""}
-                            {(ev.membres || [ev.membre])
-                              .map(
-                                (id) =>
-                                  membresAffichage.find((m) => m.id === id)
-                                    ?.nom || id,
-                              )
-                              .join(", ")}
-                            {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                            {ev.recurrence && ev.recurrence !== "aucune"
-                              ? " · 🔁"
-                              : ""}
-                          </p>
-                          <AvatarsMembres
-                            membresIds={ev.membres || [ev.membre]}
-                            size="sm"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        key={i}
-                        onClick={() => setEvenementDetail(ev)}
-                        className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all"
-                      >
+                        className="w-4 h-4 rounded-full flex-shrink-0 mt-0.5"
+                        style={{ backgroundColor: "#4A4E69" }}
+                      />
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-800 text-sm">
+                          {ev.titre}
+                        </p>
+                        <p className="text-gray-400 text-xs mb-1.5">
+                          {ev.heureDebut && ev.heureDebut !== "00:00"
+                            ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
+                            : ""}
+                          {(ev.membres || [ev.membre])
+                            .map(
+                              (id) =>
+                                membresAffichage.find((m) => m.id === id)
+                                  ?.nom || id,
+                            )
+                            .join(", ")}
+                          {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                          {ev.recurrence && ev.recurrence !== "aucune"
+                            ? " · 🔁"
+                            : ""}
+                        </p>
                         <AvatarsMembres
                           membresIds={ev.membres || [ev.membre]}
-                          size="lg"
+                          size="sm"
                         />
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800 text-sm">
-                            {ev.titre}
-                          </p>
-                          <p className="text-gray-400 text-xs">
-                            {ev.heureDebut && ev.heureDebut !== "00:00"
-                              ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
-                              : ""}
-                            {(ev.membres || [ev.membre])
-                              .map(
-                                (id) =>
-                                  membresAffichage.find((m) => m.id === id)
-                                    ?.nom || id,
-                              )
-                              .join(", ")}
-                            {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
-                            {ev.recurrence && ev.recurrence !== "aucune"
-                              ? " · 🔁"
-                              : ""}
-                          </p>
-                        </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  ) : (
+                    <div
+                      key={i}
+                      onClick={() => setEvenementDetail(ev)}
+                      className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-all"
+                    >
+                      <AvatarsMembres
+                        membresIds={ev.membres || [ev.membre]}
+                        size="lg"
+                      />
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-800 text-sm">
+                          {ev.titre}
+                        </p>
+                        <p className="text-gray-400 text-xs">
+                          {ev.heureDebut && ev.heureDebut !== "00:00"
+                            ? `${ev.heureDebut}${ev.heureFin ? ` → ${ev.heureFin}` : ""} · `
+                            : ""}
+                          {(ev.membres || [ev.membre])
+                            .map(
+                              (id) =>
+                                membresAffichage.find((m) => m.id === id)
+                                  ?.nom || id,
+                            )
+                            .join(", ")}
+                          {ev.lieu ? ` · 📍 ${ev.lieu}` : ""}
+                          {ev.recurrence && ev.recurrence !== "aucune"
+                            ? " · 🔁"
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          {evenementsFiltres.length === 0 && (
+            </div>
+          ))}
+          {Object.keys(evenementsParDateListe).length === 0 && (
             <div className="text-center text-gray-400 py-8">
               <p className="text-4xl mb-2">📅</p>
-              <p className="font-semibold">Aucun événement</p>
-              <p className="text-sm">Ajoute ton premier événement !</p>
+              <p className="font-semibold">Aucun événement à venir</p>
+              <p className="text-sm">
+                Toutes les dates antérieures ont été masquées.
+              </p>
             </div>
           )}
         </>

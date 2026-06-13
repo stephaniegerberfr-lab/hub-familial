@@ -3,11 +3,12 @@
 // Gestion de la session HOMY
 //
 // LOGIQUE :
-//  - Tablette murale  → browserLocalPersistence  → session PERMANENTE
-//  - Téléphone        → browserSessionPersistence → session par onglet navigateur
+//  - Tablette murale  → browserLocalPersistence  → session permanente
+//  - PC               → browserLocalPersistence  → session permanente
+//  - Téléphone        → browserSessionPersistence → session temporaire
 //
-// La clé 'homy_device_type' dans localStorage mémorise le choix de l'appareil.
-// Elle est définie UNE SEULE FOIS au premier lancement, via DeviceSetup.jsx.
+// La clé 'homy_device_type' dans localStorage mémorise le type d'appareil.
+// Elle est détectée automatiquement au premier lancement.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -25,11 +26,13 @@ import { auth } from "./firebase"; // ⚠️ Vérifie que ce chemin correspond b
 
 /** Clé utilisée dans localStorage pour mémoriser le type d'appareil */
 const DEVICE_KEY = "homy_device_type";
+const SESSION_EXPIRY_KEY = "homy_session_expiry";
 
 /** Valeurs possibles pour le type d'appareil */
 export const DeviceType = {
   TABLET: "tablet",
   MOBILE: "mobile",
+  DESKTOP: "desktop",
 };
 
 // ─── Gestion du type d'appareil ───────────────────────────────────────────────
@@ -39,23 +42,73 @@ export const DeviceType = {
  * @returns {'tablet' | 'mobile' | null}
  */
 export function getDeviceType() {
-  return localStorage.getItem(DEVICE_KEY);
-}
-
-/**
- * Vérifie si le type d'appareil a déjà été configuré.
- * @returns {boolean}
- */
-export function isDeviceConfigured() {
-  return !!localStorage.getItem(DEVICE_KEY);
+  return localStorage.getItem(DEVICE_KEY) || detectDeviceType();
 }
 
 /**
  * Réinitialise le type d'appareil (utile depuis les Paramètres).
- * L'utilisateur devra rechoisir au prochain démarrage.
+ * L'utilisateur devra être redétecté au prochain démarrage.
  */
 export function resetDeviceType() {
   localStorage.removeItem(DEVICE_KEY);
+  localStorage.removeItem(SESSION_EXPIRY_KEY);
+}
+
+/**
+ * Détecte automatiquement le type d'appareil en fonction du navigateur.
+ * Retourne 'mobile', 'tablet' ou 'desktop'.
+ */
+export function detectDeviceType() {
+  if (typeof navigator === "undefined") return DeviceType.DESKTOP;
+
+  const ua = navigator.userAgent || navigator.vendor || "";
+  const isAndroid = /Android/i.test(ua);
+  const isTabletUa =
+    /Tablet|iPad|PlayBook|Silk/i.test(ua) ||
+    (isAndroid && !/Mobile/i.test(ua)) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isMobileUa = /Mobi|Android|iPhone|iPod|Windows Phone|BlackBerry/i.test(
+    ua,
+  );
+
+  if (isTabletUa) return DeviceType.TABLET;
+  if (isMobileUa) return DeviceType.MOBILE;
+
+  const hasTouch =
+    navigator.maxTouchPoints > 1 || navigator.msMaxTouchPoints > 1;
+  const width = window.screen?.width || 0;
+  if (hasTouch && width >= 768 && width < 1440) return DeviceType.TABLET;
+
+  return DeviceType.DESKTOP;
+}
+
+function getExpiryDays(deviceType) {
+  return deviceType === DeviceType.MOBILE ? 30 : 365;
+}
+
+export function getSessionExpiry() {
+  return localStorage.getItem(SESSION_EXPIRY_KEY);
+}
+
+export function setSessionExpiry(deviceType) {
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + getExpiryDays(deviceType));
+  localStorage.setItem(SESSION_EXPIRY_KEY, expiryDate.toISOString());
+}
+
+export function isSessionValid() {
+  const expiry = getSessionExpiry();
+  if (!expiry) return false;
+  return new Date(expiry) > new Date();
+}
+
+export function ensureDeviceConfigured() {
+  let deviceType = localStorage.getItem(DEVICE_KEY);
+  if (!deviceType) {
+    deviceType = detectDeviceType();
+    localStorage.setItem(DEVICE_KEY, deviceType);
+  }
+  return deviceType;
 }
 
 // ─── Configuration Firebase Auth ──────────────────────────────────────────────
@@ -77,9 +130,9 @@ export function resetDeviceType() {
 export async function configureAuthPersistence(deviceType) {
   try {
     const persistence =
-      deviceType === DeviceType.TABLET
-        ? browserLocalPersistence
-        : browserSessionPersistence;
+      deviceType === DeviceType.MOBILE
+        ? browserSessionPersistence
+        : browserLocalPersistence;
 
     await setPersistence(auth, persistence);
   } catch (error) {
@@ -88,17 +141,6 @@ export async function configureAuthPersistence(deviceType) {
       error,
     );
   }
-}
-
-/**
- * Enregistre le type d'appareil ET configure immédiatement la persistance Firebase.
- * Appelé depuis DeviceSetup.jsx (une seule fois au premier lancement).
- *
- * @param {'tablet' | 'mobile'} deviceType
- */
-export async function setupDevice(deviceType) {
-  localStorage.setItem(DEVICE_KEY, deviceType);
-  await configureAuthPersistence(deviceType);
 }
 
 // ─── Authentification Google ──────────────────────────────────────────────────
@@ -116,6 +158,8 @@ export async function signInWithGoogle() {
   provider.addScope("email");
 
   const result = await signInWithPopup(auth, provider);
+  const deviceType = getDeviceType();
+  setSessionExpiry(deviceType);
   return result.user;
 }
 
@@ -127,6 +171,7 @@ export async function signInWithGoogle() {
  */
 export async function signOutUser() {
   await signOut(auth);
+  localStorage.removeItem(SESSION_EXPIRY_KEY);
 }
 
 // ─── Écoute de l'état d'authentification ──────────────────────────────────────
@@ -142,6 +187,13 @@ export async function signOutUser() {
  * @param {function(import('firebase/auth').User | null): void} callback
  * @returns {function} unsubscribe
  */
+export async function ensureSessionValidity() {
+  if (!isSessionValid()) {
+    await signOut(auth);
+    localStorage.removeItem(SESSION_EXPIRY_KEY);
+  }
+}
+
 export function onAuthStateChange(callback) {
   return onAuthStateChanged(auth, callback);
 }
